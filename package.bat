@@ -1,2 +1,2 @@
-tar -a -c -f cambridge.zip libs load res scene tetris conf.lua main.lua scene.lua funcs.lua threaded_replay_code.lua
+tar -ac --exclude=./res/img/rpc/ --exclude=./res/bgm/pacer_test.mp3 --exclude=./libs/discord-rpc* --exclude=./libs/discordGameSDK/ -f cambridge.zip libs load res scene tetris *.lua
 rename cambridge.zip cambridge.love

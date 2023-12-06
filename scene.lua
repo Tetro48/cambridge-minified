@@ -10,6 +10,7 @@ function Scene:onInputRelease() end
 
 ExitScene = require "scene.exit"
 GameScene = require "scene.game"
+ResourcePackScene = require "scene.resource_pack_scene"
 ReplayScene = require "scene.replay"
 ModeSelectScene = require "scene.mode_select"
 RevModeSelectScene = require "scene.revamped_mode_select"
@@ -25,3 +26,4 @@ TuningScene = require "scene.tuning"
 SettingsScene = require "scene.settings"
 CreditsScene = require "scene.credits"
 TitleScene = require "scene.title"
+TutorialKeybinder = require "scene.tutorial_keybinder"

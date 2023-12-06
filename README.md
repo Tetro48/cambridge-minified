@@ -5,7 +5,7 @@ Cambridge
 
 Welcome to Cambridge, the next open-source falling-block game engine!
 
-The project is written and maintained exclusively by [Milla](https://github.com/MillaBasset), [joezeng](https://github.com/joezeng) and [Oshisaure](https://github.com/oshisaure)!  
+The project is written and maintained exclusively by [Milla](https://github.com/MillaBasset), [joezeng](https://github.com/joezeng) and [Oshisaure](https://github.com/oshisaure)!
 
 The Discord server has been reopened! https://discord.gg/AADZUmgsph
 
@@ -16,39 +16,27 @@ Playing the game
 
 ### Windows
 
-You do not need LÖVE on Windows, as it comes bundled with the program.  
+You do not need LÖVE on Windows, as it comes bundled with the program.
 
 #### Stable release
 
-To get the stable release, simply download either `cambridge-win32.zip` (32-bit) or `cambridge-windows.zip` (64-bit) in the [latest release](https://github.com/MillaBasset/cambridge/releases/latest).  
+To get the stable release, simply download either `cambridge_windows_x86.zip` (32-bit, x86) or `cambridge_windows_x64.zip` (64-bit, x86-64) in the [latest release](../../releases/latest).
 
 All assets needed are bundled with the executable.
 
 #### Bleeding edge
 
-If you want the bleeding edge version, download [this](https://github.com/MillaBasset/cambridge/archive/master.zip). Extract the ZIP to a folder of your choosing.
+If you want the bleeding edge version, download [this](../../archive/master.zip). Extract the ZIP to a folder of your choosing.
 
-Assuming you're on a 64-bit system, you can double-click `start_win64.bat` to run the game. If that doesn't work, open a Command Prompt where you extracted Cambridge and run:
+If you're on Windows, you can double-click `start.bat` to run the game. If that doesn't work, open a Command Prompt where you extracted Cambridge and run:
 
 	dist\windows\love.exe .
 
-If you're on a 32-bit system, you'll want to double-click `start_win32.bat`. If that doesn't work, run this instead:
+If that doesn't work, run this instead, still using Command Prompt where you extracted Cambridge:
 
 	dist\win32\love.exe .
 
-32-bit systems do not support the outdated rich presence integration.
-
 Then, check the mod pack section at the bottom of this page.
-
-#### Flooding edge
-
-If you want the `flooding edge` version, download [this](https://github.com/Tetro48/cambridge/archive/master.zip) or get the latest artifacts from Github Actions.
-
-Note: It might have weird bugs that isn't addressed by [Tetro48](https://github.com/Tetro48/); it has a lot of changes.
-e.g.
-Mouse controls, cursor type, visual settings, separate audio settings, replay tree, replay speed, tool-assisted speedrun mode, input re-work, replay tunings (although that'd be helpful), file drag-n-drop, and many many more.
-
-Any bugs found here that does not also apply to vanilla version must only be reported on this fork. Do not make issues related to this fork on [the fork's origin](https://github.com/MillaBasset/cambridge).
 
 ### macOS, Linux
 
@@ -73,6 +61,15 @@ Then, navigate to the root directory that you just cloned, and type:
 	love .
 
 It should run automatically!
+
+
+## Notes for Flooding edge
+
+This fork might have weird bugs that isn't addressed by [Tetro48](https://github.com/Tetro48/); it has a lot of changes.
+e.g.
+Mouse controls, cursor type, visual settings, separate audio settings, dedicated highscores viewer, replay tree, replay speed, tool-assisted speedrun mode, input re-work, replay tunings (although that'd be helpful), file drag-n-drop, and many many more.
+
+Any bugs found here that does not also apply to vanilla version must only be reported on this fork. Do not make issues related to this fork on [the fork's origin](https://github.com/MillaBasset/cambridge).
 
 ## Installing modpacks
 
@@ -117,4 +114,4 @@ Other Notable Games
 - [Puzzle Trial](https://kagamine-rin.itch.io/puzzle-trial) by Rin
 - [stackfuse](https://github.com/sinefuse/stackfuse) by sinefuse
 
-![Cambridge Logo](https://cdn.discordapp.com/attachments/625496179433668635/763363717730664458/Icon_2.png)
+![Cambridge Logo](https://cdn.discordapp.com/attachments/827186653772644452/1077674343544393820/Icon_2.png)

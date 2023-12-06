@@ -9,7 +9,6 @@ local Grid = require 'tetris.components.grid'
 local Randomizer = require 'tetris.randomizers.randomizer'
 local BagRandomizer = require 'tetris.randomizers.bag'
 local binser = require 'libs.binser'
-local sha256_table = {}
 
 local GameMode = Object:extend()
 
@@ -18,7 +17,9 @@ GameMode.hash = ""
 GameMode.tagline = ""
 GameMode.rollOpacityFunction = function(age) return 0 end
 
-function GameMode:new(secret_inputs, properties, sha_tbl)
+---@param secret_inputs table
+---@param properties table
+function GameMode:new(secret_inputs, properties)
 	self.replay_inputs = {}
 	self.random_low, self.random_high = love.math.getRandomSeed()
 	self.random_state = love.math.getRandomState()
@@ -103,6 +104,7 @@ function GameMode:getDasLimit() return 15 end
 function GameMode:getDasCutDelay() return 0 end
 function GameMode:getGravity() return 1/64 end
 
+---@nodiscard
 function GameMode:getNextPiece(ruleset)
 	local shape = self.used_randomizer:nextPiece()
 	return {
@@ -112,6 +114,7 @@ function GameMode:getNextPiece(ruleset)
 	}
 end
 
+---@nodiscard
 function GameMode:getSkin()
 	return "2tie"
 end
@@ -175,23 +178,12 @@ function GameMode:saveReplay()
 	replay["auto_repeat_rate"] = config.arr
 	replay["das_cut_delay"] = config.dcd
 	replay["timestamp"] = os.time()
+	replay["pause_count"] = self.pause_count
+	replay["pause_time"] = self.pause_time
+	replay["pause_timestamps"] = self.pause_timestamps
 	if love.filesystem.getInfo("replays") == nil then
 		love.filesystem.createDirectory("replays")
 	end
-	-- local replay_files = love.filesystem.getDirectoryItems("replays")
-	-- -- Select replay filename that doesn't collide with an existing one
-	-- local replay_number = 0
-	-- local collision = true
-	-- while collision do
-	-- 	collision = false
-	-- 	replay_number = replay_number + 1
-	-- 	for key, file in pairs(replay_files) do
-	-- 		if file == replay_number..".crp" then
-	-- 			collision = true
-	-- 			break
-	-- 		end
-	-- 	end
-	-- end
 	local init_name
 	if config.gamesettings.replay_name == 2 then
 		init_name = string.format("replays/%s.crp", os.date("%Y-%m-%d_%H-%M-%S"))
@@ -209,6 +201,10 @@ function GameMode:saveReplay()
 		end
 	end
 	love.filesystem.write(replay_name, binser.serialize(replay))
+	if loaded_replays then
+		insertReplay(replay)
+		sortReplays()
+	end
 end
 
 function GameMode:addReplayInput(inputs)
@@ -232,6 +228,9 @@ function GameMode:update(inputs, ruleset)
 	if self.game_over or self.completed then
 		if self.save_replay and self.game_over_frames == 0 then
 			self:saveReplay()
+
+			-- ensure replays are only saved once per game, incase self.game_over_frames == 0 for longer than one frame
+			self.save_replay = false
 		end
 		self.game_over_frames = self.game_over_frames + 1
 		return
@@ -453,6 +452,7 @@ end
 
 function GameMode:onGameOver()
 	switchBGM(nil)
+	pitchBGM(1)
 	local alpha = 0
 	local animation_length = 120
 	if self.game_over_frames < animation_length then
@@ -689,7 +689,7 @@ function GameMode:initializeNextPiece(
 		self.drop_locked, self.hard_drop_locked, self.big_mode,
 		(
 			self.frames == 0 or (ruleset.are and self:getARE() ~= 0)
-		) and self.irs or false
+		) and self.irs or false, self.half_block_mode
 	)
 	if config.gamesettings.buffer_lock == 3 then
 		if self.buffer_hard_drop then
@@ -890,7 +890,7 @@ function GameMode:drawNextQueue(ruleset)
 	else
 		colourscheme = ruleset.colourscheme
 	end
-	function drawPiece(piece, skin, offsets, pos_x, pos_y)
+	local function drawPiece(piece, skin, offsets, pos_x, pos_y)
 		for index, offset in pairs(offsets) do
 			local x = offset.x + ruleset:getDrawOffset(piece, rotation).x + ruleset.spawn_positions[piece].x
 			local y = offset.y + ruleset:getDrawOffset(piece, rotation).y + 4.7
@@ -929,10 +929,12 @@ function GameMode:setHoldOpacity()
 	love.graphics.setColor(colour, colour, colour, 1)
 end
 
+---@nodiscard
 function GameMode:getBackground()
 	return 0
 end
 
+---@nodiscard
 function GameMode:getHighscoreData()
 	return {}
 end
@@ -1034,12 +1036,10 @@ function GameMode:drawSectionTimesWithSplits(current_section, section_limit)
 end
 
 function GameMode:drawBackground()
+	local id = self:getBackground()
+	if type(id) == "number" then id = clamp(id, 0, #backgrounds) end
 	love.graphics.setColor(1, 1, 1, 1)
-	drawSizeIndependentImage(
-		backgrounds[self:getBackground()],
-		0, 0, 0,
-		640, 480
-	)
+	drawBackground(id)
 end
 
 function GameMode:drawFrame()
@@ -1122,7 +1122,7 @@ function GameMode:draw(paused)
 		)
 	end
 
-	if paused or frame_steps > 0 then
+	if paused then
 		self:drawIfPaused()
 	end
 

@@ -1,3 +1,9 @@
+
+-- Pre-load aliases
+random = love.math.random
+math.random = love.math.random
+math.randomseed = love.math.setRandomSeed
+
 function love.load()
 	love.graphics.setDefaultFilter("linear", "nearest")
 	require "load.fonts"
@@ -25,7 +31,6 @@ function love.load()
 	--config["das_last_key"] = false
 	--config["fullscreen"] = false
 
-	love.window.setMode(love.graphics.getWidth(), love.graphics.getHeight(), {resizable = true, vsync = false});
 		
 	-- used for screenshots
 	GLOBAL_CANVAS = love.graphics.newCanvas()
@@ -35,16 +40,19 @@ function love.load()
 
 	love.window.setFullscreen(config["fullscreen"])
 
+
+	-- loads game graphics and sounds.
+	loadResources()
+
 	-- import custom modules
 	initModules()
-
-	generateSoundTable()
-
-	loadReplayList()
 
 	-- this is executed after the sound table is generated. why is that is unknown.
 	if config.secret then playSE("welcome") end
 end
+---@param table table
+---@param directory string
+---@param blacklisted_string string
 function recursivelyLoadRequireFileTable(table, directory, blacklisted_string)
 	--LOVE 12.0 will warn about require strings having forward slashes in them if this is not done.
 	local require_string = string.gsub(directory, "/", ".")
@@ -63,6 +71,7 @@ function recursivelyLoadRequireFileTable(table, directory, blacklisted_string)
 		end
 	end
 end
+
 
 ---@param reload boolean|nil
 function initModules(reload)
@@ -102,6 +111,9 @@ end
 --#region Tetro48's code
 
 
+---@param tbl table
+---@param key_check any
+---@return table
 local function recursionStringValueExtract(tbl, key_check)
 	local result = {}
 	for key, value in pairs(tbl) do
@@ -124,42 +136,26 @@ function loadReplayList()
 	replay_tree = {{name = "All"}}
 	dict_ref = {}
 	loaded_replays = false
+	collectgarbage("collect")
 
 	--proper disposal to avoid some memory problems
 	if io_thread then
 		io_thread:release()
-		love.thread.getChannel( 'replays' ):clear()
-		love.thread.getChannel( 'replay_tree' ):clear()
-		love.thread.getChannel( 'dict_ref' ):clear()
+		love.thread.getChannel( 'replay' ):clear()
 		love.thread.getChannel( 'loaded_replays' ):clear()
 	end
 
 	io_thread = love.thread.newThread( replay_load_code )
-	local mode_names = {}
 	for key, value in pairs(recursionStringValueExtract(game_modes, "is_directory")) do
-		table.insert(mode_names, value.name)
+		dict_ref[value.name] = key + 1
+		replay_tree[key + 1] = {name = value.name}
 	end
-	io_thread:start(mode_names)
-end
-
-function nilCheck(input, default)
-	if input == nil then
-		return default
-	end
-	return input
-end
-
-function popFromChannel(channel_name)
-	local load_from = love.thread.getChannel(channel_name):pop()
-	if load_from then
-		return load_from
-	end
+	io_thread:start()
 end
 
 is_cursor_visible = true
 mouse_idle = 0
 TAS_mode = false
-frame_steps = 0
 loaded_replays = false
 local prev_cur_pos_x, prev_cur_pos_y = 0, 0
 local system_cursor_type = "arrow"
@@ -170,44 +166,9 @@ function setSystemCursorType(type)
 	system_cursor_type = type
 end
 
--- For when you need to convert given coordinate to where it'd be in scaled 640x480 equivalent.
-function getScaledPos(x, y)
-	local screen_x, screen_y = love.graphics.getDimensions()
-	local scale_factor = math.min(screen_x / 640, screen_y / 480)
-	return (x - (screen_x - scale_factor * 640) / 2)/scale_factor, (y - (screen_y - scale_factor * 480) / 2)/scale_factor
-end
-
-
-function CursorHighlight(x,y,w,h)
-	local mouse_x, mouse_y = getScaledPos(love.mouse.getPosition())
-	if mouse_idle > 2 or config.visualsettings.cursor_highlight ~= 1 then
-		return 1
-	end
-	if mouse_x > x and mouse_x < x+w and mouse_y > y and mouse_y < y+h then
-		setSystemCursorType("hand")
-		return 0
-	else
-		return 1
-	end
-end
---Interpolates in a smooth fashion.
-function interpolateListPos(input, from)
-	if config.visualsettings["smooth_scroll"] == 2 then
-		return from
-	end
-	if from > input then
-		input = input + (from - input) / 4
-		if input > from - 0.02 then
-			input = from
-		end
-	elseif from < input then
-		input = input + (from - input) / 4
-		if input < from + 0.02 then
-			input = from
-		end
-	end
-	return input
-end
+---@param x number
+---@param y number
+---@param a number
 function drawT48Cursor(x, y, a)
 	if a <= 0 then return end
     love.graphics.setColor(1,1,1,a)
@@ -217,6 +178,7 @@ function drawT48Cursor(x, y, a)
     love.graphics.setColor(1,1,1,a)
 end
 
+---@param image love.ImageData
 local function screenshotFunction(image)
 	playSE("screenshot")
 	screenshot_images[#screenshot_images+1] = {image = love.graphics.newImage(image), time = 0, y_position = #screenshot_images * 260}
@@ -290,8 +252,8 @@ local function drawScreenshotPreviews()
 		local image_x, image_y = value.image:getDimensions()
 		local local_scale_factor = math.min(image_x / 640, image_y / 480)
 		value.time = value.time + math.max(value.time < 300 and 4 or 1, value.time / 10 - 30)
-		value.y_position = interpolateListPos(value.y_position, accumulated_y)
-		local scaled_width, scaled_zero = getScaledPos(love.graphics.getWidth(), 0)
+		value.y_position = interpolateNumber(value.y_position, accumulated_y)
+		local scaled_width, scaled_zero = getScaledDimensions(love.graphics.getWidth(), 0)
 		local x = (scaled_width) - ((image_x / 4) / local_scale_factor) + math.max(0, value.time - 300)
 		local rect_x, rect_y, rect_w, rect_h = x - 1, scaled_zero + value.y_position - 1, ((image_x / 4) / local_scale_factor) + 2, ((image_y / 4) / local_scale_factor) + 2
 		love.graphics.setColor(0, 0, 0)
@@ -320,6 +282,11 @@ function love.errorhandler(msg)
 	local errored_filename = msg:sub(1, msg:find(':') -1)
 	local substring = msg:sub(msg:find(':') +1)
 	local line_error = tonumber(substring:sub(1, substring:find(':') - 1), 10)
+
+	if love.filesystem.isFused() then
+		local source_dir = love.filesystem.getSourceBaseDirectory()
+		love.filesystem.mount(source_dir, "")
+	end
 
 	local str_data = love.filesystem.read("string", errored_filename)
 
@@ -359,7 +326,8 @@ function love.errorhandler(msg)
 	if love.audio then love.audio.stop() end
 
 	love.graphics.reset()
-	local font = love.graphics.setNewFont(14)
+	local font = love.graphics.newFont(14)
+	love.graphics.setFont(font)
 
 	love.graphics.setColor(1, 1, 1)
 
@@ -508,7 +476,7 @@ function love.draw()
 	else
 		love.mouse.setVisible(config.visualsettings.cursor_type == 1)
 		if config.visualsettings.cursor_type ~= 1 then
-			local lx, ly = getScaledPos(love.mouse.getPosition())
+			local lx, ly = getScaledDimensions(love.mouse.getPosition())
 			drawT48Cursor(lx, ly, 9 - mouse_idle * 4)
 		end
 	end
@@ -530,7 +498,7 @@ function love.draw()
 		bottom_right_corner_y_offset = bottom_right_corner_y_offset + 113
 		local stats = love.graphics.getStats()
 		love.graphics.printf(
-			string.format("GPU stats:\nDraw calls: %d\nTexture Memory: %dKB\nImages loaded: %d\nFonts loaded: %d\nBatched draw calls: %d", stats.drawcalls + 1, stats.texturememory / 1024, stats.images, stats.fonts, stats.drawcallsbatched),
+			string.format("GPU stats:\nDraw calls: %d\nTexture Memory: %dKB\n"..(stats.textures and "Textures" or "Images").." loaded: %d\nFonts loaded: %d\nBatched draw calls: %d", stats.drawcalls + 1, stats.texturememory / 1024, (stats.images or stats.textures), stats.fonts, stats.drawcallsbatched),
 			0, 480 - bottom_right_corner_y_offset, 635, "right"
 		)
 	end
@@ -546,23 +514,53 @@ local function multipleInputs(input_table, input)
 	return result_inputs
 end
 
+local function toFormattedValue(value)
+	
+	if type(value) == "table" and value.digits and value.sign then
+		local num = ""
+		if value.sign == "-" then
+			num = "-"
+		end
+		for id, digit in pairs(value.digits) do
+			if not value.dense or id == 1 then
+				num = num .. math.floor(digit) -- lazy way of getting rid of .0$
+			else
+				num = num .. string.format("%07d", digit)
+			end
+		end
+		return num
+	end
+	return value
+end
+
+---@param str string
+local function stringLengthLimit(str, len)
+	local new_str = ""
+	if #str > len then
+		for i = 1, math.ceil(#str / len) do
+			new_str = new_str .. str:sub((i-1)*len+1, i*len+1).."\n"
+		end
+	else
+		return str
+	end
+	return new_str
+end
+
+---@param file love.File
 function love.filedropped(file)
 	file:open("r")
 	local data = file:read()
+	file:close()
 	local raw_file_directory = file:getFilename()
-	if raw_file_directory:sub(-4) ~= ".lua" and raw_file_directory:sub(-4) ~= ".crp" then
-		love.window.showMessageBox(love.window.getTitle(), "This file is not a Lua nor replay file.", "warning")
-		file:close()
-		return
-	end
 	local char_pos = raw_file_directory:gsub("\\", "/"):reverse():find("/")
 	local filename = raw_file_directory:sub(-char_pos+1)
 	local final_directory
 	local msgbox_choice = 0
+	local binser = require "libs.binser"
+	local confirmation_buttons = {"No", "Yes", enterbutton = 2}
 	if raw_file_directory:sub(-4) == ".lua" then
 		msgbox_choice = love.window.showMessageBox(love.window.getTitle(), "Where do you put "..filename.."?", { "Cancel", "Rulesets", "Modes"}, "info")
 		if msgbox_choice == 0 or msgbox_choice == 1 then
-			file:close()
 			return
 		end
 		local directory_string = "rulesets/"
@@ -570,25 +568,80 @@ function love.filedropped(file)
 			directory_string = "modes/"
 		end
 		final_directory = "tetris/"..directory_string
-	else
-		msgbox_choice = love.window.showMessageBox(love.window.getTitle(), "Do you want to insert replay "..filename.."?", {"No", "Yes"})
-		if msgbox_choice < 2 then
+	elseif raw_file_directory:sub(-4) == ".crp" then
+		msgbox_choice = love.window.showMessageBox(love.window.getTitle(), "What option do you select for "..filename.."?", {"Insert", "View", escapebutton = 0}, "info")
+		if msgbox_choice == 0 then
 			return
 		end
-		final_directory = "replays/"
+		if msgbox_choice == 1 then
+			final_directory = "replays/"
+		elseif msgbox_choice == 2 then
+			local replay_data = binser.d(data)[1]
+			local info_string = "Replay file view:\n"
+			info_string = info_string .. "Mode: " .. replay_data["mode"] .. " (" .. (replay_data["mode_hash"] or "???") .. ")\n"
+			info_string = info_string .. "Ruleset: " .. replay_data["ruleset"] .. " (" .. (replay_data["ruleset_hash"] or "???") .. ")\n"
+			info_string = info_string .. os.date("Timestamp: %c\n", replay_data["timestamp"])
+			if replay_data.cambridge_version then
+				if replay_data.cambridge_version ~= version then
+					info_string = info_string .. "Warning! The versions don't match!\nStuff may break, so, start at your own risk.\n"
+				end
+				info_string = info_string .. "Cambridge version for this replay: "..replay_data.cambridge_version.."\n"
+			end
+			if replay_data.pause_count and replay_data.pause_time then
+				info_string = info_string .. ("Pause count: %d\nTime Paused: %s\n"):format(replay_data.pause_count, formatTime(replay_data.pause_time))
+			end
+			if replay_data.sha256_table then
+				info_string = info_string .. ("SHA256 replay checksums:\nMode: %s\nRuleset: %s\n"):format(replay_data.sha256_table.mode, replay_data.sha256_table.ruleset)
+			end
+			if replay_data.highscore_data then
+				info_string = info_string .. "In-replay highscore data:\n\n"
+				for key, value in pairs(replay_data["highscore_data"]) do
+					info_string = info_string .. stringLengthLimit((key..": ".. toFormattedValue(value)), 75) .. "\n"
+				end
+			else
+				info_string = info_string .. "Legacy replay\nLevel: "..replay_data["level"]
+			end
+			love.window.showMessageBox(love.window.getTitle(), info_string, "info")
+			return
+		end
+	else
+		love.window.showMessageBox(love.window.getTitle(), "This file ("..filename..") is not a Lua nor replay file.", "warning")
+		return
 	end
 	local do_write = 2
 	if love.filesystem.getInfo(final_directory..filename) then
-		do_write = love.window.showMessageBox(love.window.getTitle(), "This file ("..filename..") already exists! Do you want to override it?", {"No", "Yes"}, "warning")
+		do_write = love.window.showMessageBox(love.window.getTitle(), "This file ("..filename..") already exists! Do you want to override it?", confirmation_buttons, "warning")
 	end
 
 	if do_write == 2 then
 		love.filesystem.createDirectory(final_directory)
 		love.filesystem.write(final_directory..filename, data)
+		if final_directory ~= "replays/" then
+			loaded_replays = false
+		elseif loaded_replays then
+			local replay = binser.deserialize(data)[1]
+			insertReplay(replay)
+			sortReplays()
+		end
 	end
-	file:close()
 end
 
+---@param dir string
+function love.directorydropped(dir)
+	local msgbox_choice = love.window.showMessageBox(love.window.getTitle(), "Do you want to insert a directory ("..dir..") as a mod pack?", {"No", "Yes"}, "info")
+	if msgbox_choice <= 1 then
+		return
+	end
+	local success = love.filesystem.mount(dir, "directory_dropped")
+	if not success then
+		error("Unsuccessful mount on "..dir.."!")
+	end
+	copyDirectoryRecursively("directory_dropped", "", true)
+	love.filesystem.unmount(dir)
+end
+
+---@param key string|nil
+---@param scancode string|nil
 function love.keypressed(key, scancode)
 	-- global hotkeys
 	if scancode == "f11" then
@@ -641,6 +694,8 @@ function love.keypressed(key, scancode)
 			result_inputs = multipleInputs(config.input.keys, scancode)
 			for _, input in pairs(result_inputs) do
 				scene:onInputPress({input=input, type="key", key=key, scancode=scancode})
+				key = nil
+				scancode = nil
 			end
 		end
 		if #result_inputs == 0 then
@@ -649,6 +704,8 @@ function love.keypressed(key, scancode)
 	end
 end
 
+---@param key string|nil
+---@param scancode string|nil
 function love.keyreleased(key, scancode)
 	-- escape is reserved for menu_back
 	if scancode == "escape" then
@@ -663,6 +720,8 @@ function love.keyreleased(key, scancode)
 			result_inputs = multipleInputs(config.input.keys, scancode)
 			for _, input in pairs(result_inputs) do
 				scene:onInputRelease({input=input, type="key", key=key, scancode=scancode})
+				key = nil
+				scancode = nil
 			end
 		end
 		if #result_inputs == 0 then
@@ -671,6 +730,8 @@ function love.keyreleased(key, scancode)
 	end
 end
 
+---@param joystick love.Joystick
+---@param button integer
 function love.joystickpressed(joystick, button)
 	local result_inputs = {}
 	if config.input and config.input.joysticks then
@@ -687,6 +748,8 @@ function love.joystickpressed(joystick, button)
 	-- scene:onInputPress({input=input_pressed, type="joybutton", name=joystick:getName(), button=button})
 end
 
+---@param joystick love.Joystick
+---@param button integer
 function love.joystickreleased(joystick, button)
 	local result_inputs = {}
 	if config.input and config.input.joysticks then
@@ -702,6 +765,9 @@ function love.joystickreleased(joystick, button)
 	end
 end
 
+---@param joystick love.Joystick
+---@param axis number
+---@param value number
 function love.joystickaxis(joystick, axis, value)
 	local input_pressed = nil
 	local result_inputs = {}
@@ -745,6 +811,9 @@ local directions = {
 }
 
 --wtf
+---@param joystick love.Joystick
+---@param hat number
+---@param direction string
 function love.joystickhat(joystick, hat, direction)
 	local input_pressed = nil
 	local has_hat = false
@@ -833,6 +902,11 @@ function love.joystickhat(joystick, hat, direction)
 	end
 end
 
+---@param x number
+---@param y number
+---@param button integer
+---@param istouch boolean
+---@param presses integer
 function love.mousepressed(x, y, button, istouch, presses)
 	if mouse_idle > 2 then return end
 	local screen_x, screen_y = love.graphics.getDimensions()
@@ -841,6 +915,11 @@ function love.mousepressed(x, y, button, istouch, presses)
 	scene:onInputPress({input=nil, type="mouse", x=local_x, y=local_y, button=button, istouch=istouch, presses=presses})
 end
 
+---@param x number
+---@param y number
+---@param button integer
+---@param istouch boolean
+---@param presses integer
 function love.mousereleased(x, y, button, istouch, presses)
 	if mouse_idle > 2 then return end
 	local screen_x, screen_y = love.graphics.getDimensions()
@@ -849,26 +928,33 @@ function love.mousereleased(x, y, button, istouch, presses)
 	scene:onInputRelease({input=nil, type="mouse", x=local_x, y=local_y, button=button, istouch=istouch, presses=presses})
 end
 
+function love.focus(f)
+	if f then
+		love.audio.setVolume(config.audiosettings.master_volume / 100)
+	else
+		love.audio.setVolume(config.audiosettings.master_volume / 1000)
+	end
+end
+
+---@param x number
+---@param y number
 function love.wheelmoved(x, y)
 	scene:onInputPress({input=nil, type="wheel", x=x, y=y})
 end
 
-function love.focus(f)
-	if f then
-		resumeBGM(true)
-	else
-		pauseBGM(true)
-	end
-end
-
+---@param w integer
+---@param h integer
 function love.resize(w, h)
-		GLOBAL_CANVAS:release()
-		GLOBAL_CANVAS = love.graphics.newCanvas(w, h)
+	GLOBAL_CANVAS:release()
+	GLOBAL_CANVAS = love.graphics.newCanvas(w, h)
 end
 
+-- higher values of TARGET_FPS will make the game run "faster"
+-- since the game is mostly designed for 60 FPS
 local TARGET_FPS = 60
 local FRAME_DURATION = 1.0 / TARGET_FPS
 
+---@param fps number
 function setTargetFPS(fps)
 	if fps == -1 then
 		TARGET_FPS = -1
@@ -885,6 +971,7 @@ function getTargetFPS()
 	return TARGET_FPS
 end
 
+-- custom run function; optimizes game by syncing draw/update calls
 function love.run()
 	if love.load then love.load(love.arg.parseGameArguments(arg), arg) end
 
@@ -900,6 +987,7 @@ function love.run()
 			for name, a,b,c,d,e,f in love.event.poll() do
 				if name == "quit" then
 					if not love.quit or not love.quit() then
+						if io_thread then io_thread:release() end
 						return a or 0
 					end
 				end

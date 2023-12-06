@@ -1,5 +1,6 @@
 local Object = require 'libs.classic'
 
+---@class Grid
 local Grid = Object:extend()
 
 local empty = { skin = "", colour = "" }
@@ -30,6 +31,7 @@ function Grid:clear()
 	end
 end
 
+---@nodiscard
 function Grid:getCell(x, y)
 	if x < 1 or x > self.width or y > self.height then return oob
 	elseif y < 1 then return empty
@@ -37,10 +39,12 @@ function Grid:getCell(x, y)
 	end
 end
 
+---@nodiscard
 function Grid:isOccupied(x, y)
 	return self:getCell(x+1, y+1) ~= empty
 end
 
+---@nodiscard
 function Grid:isRowFull(row)
 	for index, square in pairs(self.grid[row]) do
 		if square == empty then return false end
@@ -48,6 +52,7 @@ function Grid:isRowFull(row)
 	return true
 end
 
+---@nodiscard
 function Grid:canPlacePiece(piece)
 	if piece.big then
 		return self:canPlaceBigPiece(piece)
@@ -64,16 +69,17 @@ function Grid:canPlacePiece(piece)
 	return true
 end
 
+---@nodiscard
 function Grid:canPlaceBigPiece(piece)
 	local offsets = piece:getBlockOffsets()
 	for index, offset in pairs(offsets) do
-		local x = piece.position.x + offset.x
-		local y = piece.position.y + offset.y
+		local x = piece.position.x + offset.x * 2
+		local y = piece.position.y + offset.y * 2
 		if (
-		   self:isOccupied(x * 2 + 0, y * 2 + 0)
-		or self:isOccupied(x * 2 + 1, y * 2 + 0)
-		or self:isOccupied(x * 2 + 0, y * 2 + 1)
-		or self:isOccupied(x * 2 + 1, y * 2 + 1)
+		   self:isOccupied(x + 0, y + 0)
+		or self:isOccupied(x + 1, y + 0)
+		or self:isOccupied(x + 0, y + 1)
+		or self:isOccupied(x + 1, y + 1)
 		) then
 			return false
 		end
@@ -81,17 +87,37 @@ function Grid:canPlaceBigPiece(piece)
 	return true
 end
 
+
+---@nodiscard
+function Grid:canPlaceBigPieceInVisibleGrid(piece)
+	local offsets = piece:getBlockOffsets()
+	for index, offset in pairs(offsets) do
+		local x = piece.position.x + offset.x * 2
+		local y = piece.position.y + offset.y * 2
+		if (
+		   y < 3
+		or self:isOccupied(x + 0, y + 0)
+		or self:isOccupied(x + 1, y + 0)
+		or self:isOccupied(x + 0, y + 1)
+		or self:isOccupied(x + 1, y + 1)
+		) then
+			return false
+		end
+	end
+	return true
+end
+
+---@nodiscard
 function Grid:canPlacePieceInVisibleGrid(piece)
 	if piece.big then
-		return self:canPlaceBigPiece(piece)
-		-- forget canPlaceBigPieceInVisibleGrid for now
+		return self:canPlaceBigPieceInVisibleGrid(piece)
 	end
 
 	local offsets = piece:getBlockOffsets()
 	for index, offset in pairs(offsets) do
 		local x = piece.position.x + offset.x
 		local y = piece.position.y + offset.y
-		if y < 4 or self:isOccupied(x, y) ~= empty then
+		if y < 4 or self:isOccupied(x, y) then
 			return false
 		end
 	end
@@ -179,6 +205,7 @@ end
 function Grid:clearSpecificRow(row)
 	for col = 1, self.width do
 		self.grid[row][col] = empty
+		self.grid_age[row][col] = 0
 	end
 end
 
@@ -187,12 +214,9 @@ function Grid:clearBlock(x, y)
 end
 
 function Grid:clearBottomRows(num)
-	local old_isRowFull = self.isRowFull
-    self.isRowFull = function(self, row)
-		return row >= self.height + 1 - num
+	for i = self.height, self.height - num + 1, -1 do
+		self:clearSpecificRow(i)
 	end
-    self:clearClearedRows()
-    self.isRowFull = old_isRowFull
 end
 
 function Grid:applyPiece(piece)
@@ -200,10 +224,10 @@ function Grid:applyPiece(piece)
 		self:applyBigPiece(piece)
 		return
 	end
-	offsets = piece:getBlockOffsets()
+	local offsets = piece:getBlockOffsets()
 	for index, offset in pairs(offsets) do
-		x = piece.position.x + offset.x
-		y = piece.position.y + offset.y
+		local x = piece.position.x + offset.x
+		local y = piece.position.y + offset.y
 		if y + 1 > 0 and y < self.height then
 			self.grid[y+1][x+1] = {
 				skin = piece.skin,
@@ -214,14 +238,14 @@ function Grid:applyPiece(piece)
 end
 
 function Grid:applyBigPiece(piece)
-	offsets = piece:getBlockOffsets()
+	local offsets = piece:getBlockOffsets()
 	for index, offset in pairs(offsets) do
-		x = piece.position.x + offset.x
-		y = piece.position.y + offset.y
+		local x = piece.position.x + offset.x * 2
+		local y = piece.position.y + offset.y * 2
 		for a = 1, 2 do
 			for b = 1, 2 do
-				if y*2+a > 0 and y*2 < self.height then
-					self.grid[y*2+a][x*2+b] = {
+				if y+a > 0 and y < self.height then
+					self.grid[y+a][x+b] = {
 						skin = piece.skin,
 						colour = piece.colour
 					}
@@ -231,15 +255,20 @@ function Grid:applyBigPiece(piece)
 	end
 end
 
-function Grid:checkForBravo(cleared_row_count)
-	for i = 0, self.height - 1 - cleared_row_count do
-				for j = 0, self.width - 1 do
-						if self:isOccupied(j, i) then return false end
-				end
+-- places where you see this take an argument used the old, buggy method
+---@nodiscard
+function Grid:checkForBravo()
+	for i = 0, self.height - 1 do
+		if not self:isRowFull(i+1) then
+			for j = 0, self.width - 1 do
+				if self:isOccupied(j, i) then return false end
+			end
 		end
+	end
 	return true
 end
 
+---@nodiscard
 function Grid:checkStackHeight()
 	for i = 0, self.height - 1 do
 		for j = 0, self.width - 1 do
@@ -249,6 +278,7 @@ function Grid:checkStackHeight()
 	return 0
 end
 
+---@nodiscard
 function Grid:checkSecretGrade()
 	local sgrade = 0
 	for i=23,5,-1 do
@@ -468,9 +498,14 @@ function Grid:drawOutline()
 	end
 end
 
+---@param opacity_function fun(age:number)
+---@param garbage_opacity_function fun(age:number)
+---@param lock_flash boolean
+---@param brightness number
 function Grid:drawInvisible(opacity_function, garbage_opacity_function, lock_flash, brightness)
 	lock_flash = lock_flash == nil and true or lock_flash
 	brightness = brightness == nil and 0.5 or brightness
+	local opacity
 	for y = 5, self.height do
 		for x = 1, self.width do
 			if self.grid[y][x] ~= empty then
@@ -507,6 +542,7 @@ function Grid:drawInvisible(opacity_function, garbage_opacity_function, lock_fla
 	end
 end
 
+---@param colour_function fun(game, block:{skin:string, colour:string}, x:number, y:number, age:number): number, number, number, number, number
 function Grid:drawCustom(colour_function, gamestate)
     --[[
         colour_function: (game, block, x, y, age) -> (R, G, B, A, outlineA)

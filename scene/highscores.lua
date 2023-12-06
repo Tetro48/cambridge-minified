@@ -2,53 +2,6 @@ local HighscoreScene = Scene:extend()
 
 HighscoreScene.title = "Highscores"
 
---#region Custom mouse code
-
---This is for mouse. Can be removed only if the code in Mouse Controls region is removed.
-local left_clicked_before = true
-local mouse_idle = 0
-local prev_cur_pos_x, prev_cur_pos_y = 0, 0
-
-
--- For when mouse controls are part of menu controls
-local function getScaledPos(cursor_x, cursor_y)
-	local screen_x, screen_y = love.graphics.getDimensions()
-	local scale_factor = math.min(screen_x / 640, screen_y / 480)
-	return (cursor_x - (screen_x - scale_factor * 640) / 2)/scale_factor, (cursor_y - (screen_y - scale_factor * 480) / 2)/scale_factor
-end
-
-local function CursorHighlight(x,y,w,h)
-	local mouse_x, mouse_y = getScaledPos(love.mouse.getPosition())
-	if mouse_idle > 2 or config.visualsettings.cursor_highlight ~= 1 then
-		return 1
-	end
-	if mouse_x > x and mouse_x < x+w and mouse_y > y and mouse_y < y+h then
-		if setSystemCursorType then setSystemCursorType("hand") end
-		return 0
-	else
-		return 1
-	end
-end
---Interpolates in a smooth fashion unless the visual setting for scrolling is nil or off.
-local function interpolateListPos(input, from)
-	if config.visualsettings["smooth_scroll"] == 2 or config.visualsettings["smooth_scroll"] == nil then
-		return from
-	end
-	if from > input then
-		input = input + (from - input) / 4
-		if input > from - 0.02 then
-			input = from
-		end
-	elseif from < input then
-		input = input + (from - input) / 4
-		if input < from + 0.02 then
-			input = from
-		end
-	end
-	return input
-end
---#endregion
-
 function HighscoreScene:new()
     self.hash_table = {}
     for hash, value in pairs(highscores) do
@@ -66,14 +19,22 @@ function HighscoreScene:new()
 	self.menu_list_y = 20
 	self.auto_menu_offset = 0
 
-    --It's here to avoid some seems-to-be bug with the scene's built-in mouse controls.
-    left_clicked_before = true
+	DiscordRPC:update({
+		details = "In menus",
+		state = "Peeking their own highscores",
+		largeImageKey = "ingame-000"
+	})
 end
 function HighscoreScene:update()
 	if self.auto_menu_offset ~= 0 then
 		self:changeOption(self.auto_menu_offset < 0 and -1 or 1)
 		if self.auto_menu_offset > 0 then self.auto_menu_offset = self.auto_menu_offset - 1 end
 		if self.auto_menu_offset < 0 then self.auto_menu_offset = self.auto_menu_offset + 1 end
+	end
+	if self.das_up or self.das_down or self.das_left or self.das_right then
+		self.das = self.das + 1
+	else
+		self.das = 0
 	end
 	if self.das >= 15 then
 		local change = 0
@@ -89,61 +50,54 @@ function HighscoreScene:update()
 		self:changeOption(change)
 		self.das = self.das - 4
 	end
-    --#region Mouse controls.
-	local mouse_x, mouse_y = getScaledPos(love.mouse.getPosition())
-	if love.mouse.isDown(1) and not left_clicked_before then
-        if self.hash == nil then
-            self.auto_menu_offset = math.floor((mouse_y - 260)/20)
-            if self.auto_menu_offset == 0 then
-                playSE("main_decide")
-                self:selectHash()
-            end
-        end
-        if mouse_x > 20 and mouse_y > 40 and mouse_x < 70 and mouse_y < 70 then
-            playSE("main_decide")
-            self:back()
-        end
-    end
-    left_clicked_before = love.mouse.isDown(1) or mouse_idle > 2
-    if prev_cur_pos_x == love.mouse.getX() and prev_cur_pos_y == love.mouse.getY() then
-        mouse_idle = mouse_idle + love.timer.getDelta()
-    else
-        mouse_idle = 0
-    end
-    prev_cur_pos_x, prev_cur_pos_y = love.mouse.getPosition()
-    --#endregion
 end
 function HighscoreScene:selectHash()
     self.list_pointer = 1
     self.hash = self.hash_table[self.hash_id]
     self.hash_highscore = highscores[self.hash]
 end
+--Takes cares of both normal numbers and bigints.
+local function toFormattedValue(value)
+	
+	if type(value) == "table" and value.digits and value.sign then
+		local num = ""
+		if value.sign == "-" then
+			num = "-"
+		end
+		for id, digit in pairs(value.digits) do
+			if not value.dense or id == 1 then
+				num = num .. math.floor(digit) -- lazy way of getting rid of .0$
+			else
+                num = num .. string.format("%07d", digit)
+			end
+		end
+		return num
+	end
+	return tostring(value)
+end
 function HighscoreScene:render()
-	drawSizeIndependentImage(
-		backgrounds[0],
-		0, 0, 0,
-		640, 480
-	)
+	drawBackground(0)
 
     love.graphics.setFont(font_3x5_4)
-	local highlight = CursorHighlight(20, 40, 50, 30)
+	local highlight = cursorHighlight(20, 40, 50, 30)
 	love.graphics.setColor(1, 1, highlight, 1)
 	love.graphics.printf("<-", 20, 40, 50, "center")
 	love.graphics.setColor(1, 1, 1, 1)
 
+    love.graphics.setFont(font_8x11)
 	if self.hash ~= nil then
-		love.graphics.print("HIGHSCORE", 80, 40)
+		love.graphics.print("HIGHSCORE", 80, 43)
 		love.graphics.setFont(font_3x5_3)
-		love.graphics.printf("HASH: "..self.hash, 300, 40, 320, "right")
+		love.graphics.printf("HASH: "..self.hash, 300, 43, 320, "right")
 	else
-		love.graphics.print("SELECT HIGHSCORE HASH", 80, 40)
+		love.graphics.print("SELECT HIGHSCORE HASH", 80, 43)
 	end
 
     love.graphics.setFont(font_3x5_2)
     if self.hash_highscore ~= nil then
-        self.menu_list_y = interpolateListPos(self.menu_list_y / 20, self.list_pointer) * 20
+        self.menu_list_y = interpolateNumber(self.menu_list_y / 20, self.list_pointer) * 20
         love.graphics.printf("num", 20, 100, 100)
-		if #self.hash_highscore > 17 then
+		if #self.hash_highscore > 18 then
 			if self.list_pointer == #self.hash_highscore - 17 then
 				love.graphics.printf("^^", 5, 450, 15)
 			else
@@ -162,21 +116,25 @@ function HighscoreScene:render()
                     love.graphics.setColor(1, 1, 1, 1)
                     love.graphics.printf(name, -20 + idx * 100, 100, 100)
                 end
-				love.graphics.setColor(1, 1, 1, FadeoutAtEdges((-self.menu_list_y - 170) + 20 * key, 170, 20))
-                love.graphics.printf(tostring(value), -20 + idx * 100, 120 + 20 * key - self.menu_list_y, 100)
+				love.graphics.setColor(1, 1, 1, fadeoutAtEdges((-self.menu_list_y - 170) + 20 * key, 170, 20))
+				local formatted_string = toFormattedValue(value)
+				if love.graphics.getFont():getWidth(formatted_string) > 100 then
+					formatted_string = formatted_string:sub(1, 6-math.floor(math.log10(#formatted_string))).."...".."("..#formatted_string..")"
+				end
+                love.graphics.printf(formatted_string, -20 + idx * 100, 120 + 20 * key - self.menu_list_y, 100)
                 idx = idx + 1
             end
-			love.graphics.setColor(1, 1, 1, FadeoutAtEdges((-self.menu_list_y - 170) + 20 * key, 170, 20))
+			love.graphics.setColor(1, 1, 1, fadeoutAtEdges((-self.menu_list_y - 170) + 20 * key, 170, 20))
             love.graphics.printf(tostring(key), 20, 120 + 20 * key - self.menu_list_y, 100)
         end
     else
         love.graphics.setColor(1, 1, 1, 0.5)
         love.graphics.rectangle("fill", 3, 258 + (self.hash_id * 20) - self.menu_hash_y, 634, 22)
-        self.menu_hash_y = interpolateListPos(self.menu_hash_y / 20, self.hash_id) * 20
+        self.menu_hash_y = interpolateNumber(self.menu_hash_y / 20, self.hash_id) * 20
         for idx, value in ipairs(self.hash_table) do
 			if(idx >= self.menu_hash_y/20-10 and idx <= self.menu_hash_y/20+10) then
-				local b = CursorHighlight(0, (260 - self.menu_hash_y) + 20 * idx, 640, 20)
-				love.graphics.setColor(1, 1, b, FadeoutAtEdges((-self.menu_hash_y) + 20 * idx, 180, 20))
+				local b = cursorHighlight(0, (260 - self.menu_hash_y) + 20 * idx, 640, 20)
+				love.graphics.setColor(1, 1, b, fadeoutAtEdges((-self.menu_hash_y) + 20 * idx, 180, 20))
 				love.graphics.printf(value, 6, (260 - self.menu_hash_y) + 20 * idx, 640, "left")	
 			end
         end
@@ -190,40 +148,53 @@ function HighscoreScene:onInputPress(e)
 		if e.y ~= 0 then
 			self:changeOption(-e.y)
 		end
-	elseif (e.input == "menu_decide" or e.scancode == "return") and self.hash == nil then
+	elseif e.type == "mouse" and e.button == 1 then
+        if self.hash == nil then
+            self.auto_menu_offset = math.floor((e.y - 260)/20)
+            if self.auto_menu_offset == 0 then
+                playSE("main_decide")
+                self:selectHash()
+            end
+        end
+        if e.x > 20 and e.y > 40 and e.x < 70 and e.y < 70 then
+            self:back()
+        end
+	elseif (e.input == "menu_decide") and self.hash == nil then
 		playSE("main_decide")
 		self:selectHash()
-	elseif e.input == "up" or e.scancode == "up" then
+	elseif e.input == "menu_up" then
 		self:changeOption(-1)
 		self.das_up = true
 		self.das_down = nil
 		self.das_left = nil
 		self.das_right = nil
-	elseif e.input == "down" or e.scancode == "down" then
+	elseif e.input == "menu_down" then
 		self:changeOption(1)
 		self.das_down = true
 		self.das_up = nil
 		self.das_left = nil
 		self.das_right = nil
-	elseif e.input == "left" or e.scancode == "left" then
+	elseif e.input == "menu_left" then
 		self:changeOption(-9)
 		self.das_left = true
 		self.das_right = nil
 		self.das_up = nil
 		self.das_down = nil
-	elseif e.input == "right" or e.scancode == "right" then
+	elseif e.input == "menu_right" then
 		self:changeOption(9)
 		self.das_right = true
 		self.das_left = nil
 		self.das_up = nil
 		self.das_down = nil
-	elseif e.input == "menu_back" or e.scancode == "delete" or e.scancode == "backspace" then
+	elseif e.input == "menu_back" then
         self:back()
 	end
 end
 
 function HighscoreScene:back()
+	playSE("menu_cancel")
     if self.hash then
+		self.menu_list_y = 20
         self.hash = nil
         self.hash_highscore = nil
     else
@@ -232,13 +203,13 @@ function HighscoreScene:back()
 end
 
 function HighscoreScene:onInputRelease(e)
-	if e.input == "up" or e.scancode == "up" then
+	if e.input == "menu_up" or e.scancode == "up" then
 		self.das_up = nil
-	elseif e.input == "down" or e.scancode == "down" then
+	elseif e.input == "menu_down" or e.scancode == "down" then
 		self.das_down = nil
-	elseif e.input == "right" or e.scancode == "right" then
+	elseif e.input == "menu_right" or e.scancode == "right" then
 		self.das_right = nil
-	elseif e.input == "left" or e.scancode == "left" then
+	elseif e.input == "menu_left" or e.scancode == "left" then
 		self.das_left = nil
 	end
 end

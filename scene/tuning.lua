@@ -7,9 +7,21 @@ require 'libs.simple-slider'
 
 TuningScene.options = {
 	-- Serves as a reference for the options available in the menu. Format: {name in config, name as displayed if applicable, slider name}
-	{"das", "DAS", "dasSlider"},
-	{"arr", "ARR", "arrSlider"},
-	{"dcd", "DCD", "dcdSlider"},
+	{
+		config_name = "das",
+		display_name = "DAS",
+		slider = "dasSlider"
+	},
+	{
+		config_name = "arr",
+		display_name = "ARR",
+		slider = "arrSlider"
+	},
+	{
+		config_name = "dcd",
+		display_name = "DCD",
+		slider = "dcdSlider"
+	},
 }
 
 local optioncount = #TuningScene.options
@@ -27,7 +39,7 @@ function TuningScene:new()
 end
 
 function TuningScene:update()
-	local x, y = getScaledPos(love.mouse.getPosition())
+	local x, y = getScaledDimensions(love.mouse.getPosition())
     self.dasSlider:update(x,y)
 	self.arrSlider:update(x,y)
 	self.dcdSlider:update(x,y)
@@ -35,22 +47,18 @@ end
 
 function TuningScene:render()
     love.graphics.setColor(1, 1, 1, 1)
-	drawSizeIndependentImage(
-		backgrounds["game_config"],
-		0, 0, 0,
-		640, 480
-    )
+	drawBackground("options_game")
 
     love.graphics.setColor(1, 1, 1, 0.5)
     love.graphics.rectangle("fill", 75, 98 + self.highlight * 75, 400, 33)
 
     love.graphics.setColor(1, 1, 1, 1)
     
-    love.graphics.setFont(font_3x5_4)
-    love.graphics.print("TUNING SETTINGS", 80, 40)
-	local b = CursorHighlight(20, 40, 50, 30)
+    love.graphics.setFont(font_8x11)
+    love.graphics.print("TUNING SETTINGS", 80, 43)
+	local b = cursorHighlight(20, 40, 50, 30)
 	love.graphics.setColor(1, 1, b, 1)
-	love.graphics.printf("<-", 20, 40, 50, "center")
+	love.graphics.printf("<-", font_3x5_4, 20, 40, 50, "center")
 	love.graphics.setColor(1, 1, 1, 1)
     
     love.graphics.setFont(font_3x5_2)
@@ -75,25 +83,26 @@ function TuningScene:onInputPress(e)
 			scene = SettingsScene()
 		end
 	end
-	if e.input == "menu_decide" or e.scancode == "return" then
+	if e.input == "menu_decide" then
 		playSE("mode_decide")
 		saveConfig()
 		scene = SettingsScene()
-	elseif e.input == "up" or e.scancode == "up" then
+	elseif e.input == "menu_up" then
 		playSE("cursor")
 		self.highlight = Mod1(self.highlight-1, optioncount)
-	elseif e.input == "down" or e.scancode == "down" then
+	elseif e.input == "menu_down" then
 		playSE("cursor")
 		self.highlight = Mod1(self.highlight+1, optioncount)
-	elseif e.input == "left" or e.scancode == "left" then
+	elseif e.input == "menu_left" then
 		playSE("cursor")
-		local sld = self[self.options[self.highlight][3]]
+		local sld = self[self.options[self.highlight].slider]
 		sld.value = math.max(sld.min, math.min(sld.max, (sld:getValue() - 1) / (sld.max - sld.min)))
-	elseif e.input == "right" or e.scancode == "right" then
+	elseif e.input == "menu_right" then
 		playSE("cursor")
-		local sld = self[self.options[self.highlight][3]]
+		local sld = self[self.options[self.highlight].slider]
 		sld.value = math.max(sld.min, math.min(sld.max, (sld:getValue() + 1) / (sld.max - sld.min)))
-	elseif e.input == "menu_back" or e.scancode == "delete" or e.scancode == "backspace" then
+	elseif e.input == "menu_back" then
+		playSE("menu_cancel")
 		loadSave()
 		scene = SettingsScene()
 	end

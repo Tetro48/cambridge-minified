@@ -50,9 +50,10 @@ end
 local menu_DAS_hold = {["up"] = 0, ["down"] = 0, ["left"] = 0, ["right"] = 0}
 local menu_DAS_frames = {["up"] = 0, ["down"] = 0, ["left"] = 0, ["right"] = 0}
 local menu_ARR = {[0] = 8, 6, 5, 4, 3, 2, 2, 2, 1}
-function ModeSelectScene:menuDASInput(input, input_string, das, forced_arr)
+function ModeSelectScene:menuDASInput(input, input_string, das, arr_mul)
 	local result = false
-	local arr = forced_arr or self:getMenuARR(menu_DAS_hold[input_string])
+	arr_mul = arr_mul or 1
+	local arr = self:getMenuARR(menu_DAS_hold[input_string]) * arr_mul
 	if input then
 		menu_DAS_frames[input_string] = menu_DAS_frames[input_string] + 1
 		menu_DAS_hold[input_string] = menu_DAS_hold[input_string] + 1
@@ -113,14 +114,10 @@ function ModeSelectScene:update()
 end
 
 function ModeSelectScene:render()
-	drawSizeIndependentImage(
-		backgrounds[0],
-		0, 0, 0,
-		640, 480
-	)
+	drawBackground(0)
 
 	love.graphics.setFont(font_3x5_4)
-	local b = CursorHighlight(0, 40, 50, 30)
+	local b = cursorHighlight(0, 40, 50, 30)
 	love.graphics.setColor(1, 1, b, 1)
 	love.graphics.printf("<-", 0, 40, 50, "center")
 	love.graphics.setColor(1, 1, 1, 1)
@@ -163,8 +160,8 @@ function ModeSelectScene:render()
 		love.graphics.setColor(1, 1, 1, 0.25)
 	end
 
-	self.menu_mode_height = interpolateListPos(self.menu_mode_height / 20, mode_selected) * 20
-	self.menu_ruleset_height = interpolateListPos(self.menu_ruleset_height / 20, ruleset_selected) * 20
+	self.menu_mode_height = interpolateNumber(self.menu_mode_height / 20, mode_selected) * 20
+	self.menu_ruleset_height = interpolateNumber(self.menu_ruleset_height / 20, ruleset_selected) * 20
 
 
 	love.graphics.rectangle("fill", 20, 258 + (mode_selected * 20) - self.menu_mode_height, 240, 22)
@@ -185,7 +182,7 @@ function ModeSelectScene:render()
 			mode_path_name = mode_path_name..(value.name or "modes").." > "
 		end
 		love.graphics.printf(
-			"Path: "..mode_path_name:sub(1, #mode_path_name-3),
+			"Path: "..mode_path_name:sub(1, -3),
 			 40, 220 - self.menu_mode_height, 200, "left")
 	end
 	local ruleset_path_name = ""
@@ -194,7 +191,7 @@ function ModeSelectScene:render()
 			ruleset_path_name = ruleset_path_name..(value.name or "rulesets").." > "
 		end
 		love.graphics.printf(
-			"Path: "..ruleset_path_name:sub(1, #ruleset_path_name-3),
+			"Path: "..ruleset_path_name:sub(1, -3),
 			 360, 220 - self.menu_ruleset_height, 200, "left")
 	end
 	local fade_offset = tagline_position == 2 and -20 or 0
@@ -211,7 +208,7 @@ function ModeSelectScene:render()
 			if mode.is_directory then
 				b = 0.4
 			end
-			local highlight = CursorHighlight(
+			local highlight = cursorHighlight(
 				0,
 				(260 - self.menu_mode_height) + 20 * idx,
 				320,
@@ -222,7 +219,7 @@ function ModeSelectScene:render()
 			if idx == self.menu_state.mode and self.starting then
 				b = self.start_frames % 10 > 4 and 0 or 1
 			end
-			love.graphics.setColor(1,1,b,FadeoutAtEdges(
+			love.graphics.setColor(1,1,b,fadeoutAtEdges(
 				-self.menu_mode_height + 20 * idx - fade_offset,
 				render_list_size * 10 - 20,
 				20))
@@ -237,7 +234,7 @@ function ModeSelectScene:render()
 			if ruleset.is_directory then
 				b = 0.4
 			end
-			local highlight = CursorHighlight(
+			local highlight = cursorHighlight(
 				320,
 				(260 - self.menu_ruleset_height) + 20 * idx,
 				320,
@@ -245,7 +242,7 @@ function ModeSelectScene:render()
 			if highlight < 0.5 then
 				b = highlight
 			end
-			love.graphics.setColor(1, 1, b, FadeoutAtEdges(
+			love.graphics.setColor(1, 1, b, fadeoutAtEdges(
 				-self.menu_ruleset_height + 20 * idx - fade_offset,
 				render_list_size * 10 - 20,
 				20)
@@ -257,15 +254,7 @@ function ModeSelectScene:render()
 
 	love.graphics.setColor(1, 1, 1, 1)
 end
-function FadeoutAtEdges(input, edge_distance, edge_width)
-	if input < 0 then
-		input = input * -1
-	end
-	if input > edge_distance then
-		return 1 - (input - edge_distance) / edge_width
-	end
-	return 1
-end
+
 function ModeSelectScene:indirectStartMode()
 	if self.game_mode_folder[self.menu_state.mode].is_directory then
 		playSE("main_decide")
@@ -325,7 +314,7 @@ function ModeSelectScene:menuGoForward(type)
 end
 
 function ModeSelectScene:onInputPress(e)
-	if e.input and (self.display_warning or #self.game_mode_folder == 0 or #self.ruleset_folder == 0) then
+	if (e.input or e.scancode) and (self.display_warning or #self.game_mode_folder == 0 or #self.ruleset_folder == 0) then
 		if self.display_warning then
 			scene = TitleScene()
 		elseif #self.game_mode_folder == 0 then
@@ -333,7 +322,14 @@ function ModeSelectScene:onInputPress(e)
 		else
 			self:menuGoBack("ruleset")
 		end
-	elseif e.input == "menu_back" or e.scancode == "delete" or e.scancode == "backspace" then
+	elseif e.input == "menu_back" then
+		local has_started = self.starting
+		if self.starting then
+			self.starting = false
+			self.start_frames = 0
+			return
+		end
+		playSE("menu_cancel")
 		if self.menu_state.select == "mode" then
 			if #self.game_mode_selections > 1 then
 				self:menuGoBack("mode")
@@ -347,16 +343,13 @@ function ModeSelectScene:onInputPress(e)
 				return
 			end
 		end
-		if self.starting then
-			self.starting = false
-			self.start_frames = 0
-		else
+		if not has_started then
 			scene = TitleScene()
 		end
 	elseif e.type == "mouse" and e.button == 1 then
 		if e.y < 80 then
 			if e.x > 0 and e.y > 40 and e.x < 50 then
-				playSE("main_decide")
+				playSE("menu_cancel")
 				if self.menu_state.select == "mode" then
 					if #self.game_mode_selections > 1 then
 						self:menuGoBack("mode")
@@ -408,13 +401,16 @@ function ModeSelectScene:onInputPress(e)
 		end
 	elseif self.starting then return
 	elseif e.type == "wheel" then
+		if #self.ruleset_folder == 0 or #self.game_mode_folder == 0 then
+			return
+		end
 		if e.x % 2 == 1 then
 			self:switchSelect()
 		end
 		if e.y ~= 0 then
 			self:changeOption(-e.y)
 		end
-	elseif e.input == "menu_decide" or e.scancode == "return" then
+	elseif e.input == "menu_decide" then
 		if self.menu_state.select == "mode" and self.game_mode_folder[self.menu_state.mode].is_directory then
 			playSE("main_decide")
 			self:menuGoForward("mode")
@@ -427,13 +423,13 @@ function ModeSelectScene:onInputPress(e)
 			return
 		end
 		self:indirectStartMode()
-	elseif e.input == "up" or e.scancode == "up" then
+	elseif e.input == "menu_up" then
 		self.das_up = true
 		self.das_down = nil
-	elseif e.input == "down" or e.scancode == "down" then
+	elseif e.input == "menu_down" then
 		self.das_down = true
 		self.das_up = nil
-	elseif e.input == "left" or e.input == "right" or e.scancode == "left" or e.scancode == "right" then
+	elseif e.input == "menu_left" or e.input == "menu_right" then
 		self:switchSelect()
 	elseif e.input then
 		self.secret_inputs[e.input] = true
@@ -441,9 +437,9 @@ function ModeSelectScene:onInputPress(e)
 end
 
 function ModeSelectScene:onInputRelease(e)
-	if e.input == "up" or e.scancode == "up" then
+	if e.input == "menu_up" then
 		self.das_up = nil
-	elseif e.input == "down" or e.scancode == "down" then
+	elseif e.input == "menu_down" or e.scancode == "down" then
 		self.das_down = nil
 	elseif e.input then
 		self.secret_inputs[e.input] = false

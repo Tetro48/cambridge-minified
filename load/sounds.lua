@@ -15,6 +15,7 @@ sound_paths = {
 	cursor = "res/se/cursor.wav",
 	cursor_lr = "res/se/cursor_lr.wav",
 	main_decide = "res/se/main_decide.wav",
+	menu_cancel = "res/se/menu_cancel.wav",
 	mode_decide = "res/se/mode_decide.wav",
 	lock = "res/se/lock.wav",
 	hold = "res/se/hold.wav",
@@ -51,23 +52,33 @@ function generateSoundTable()
 		if(type(v) == "table") then
 			-- list of subsounds
 			for k2,v2 in pairs(v) do
-				if(love.filesystem.getInfo(sound_paths[k][k2])) then
+				local path = v2
+				if love.filesystem.getInfo(applied_packs_path..path) then
+					path = applied_packs_path..path
+				end
+				if(love.filesystem.getInfo(path)) then
 					-- this file exists
 					buffer_sounds[k] = buffer_sounds[k] or {}
 					buffer_sounds[k][k2] = {}
 					sounds_played[k] = sounds_played[k] or {}
 					sounds_played[k][k2] = 0
+					local sound_data = love.sound.newSoundData(path)
 					for k3 = 1, config.sound_sources do
-						buffer_sounds[k][k2][k3] = love.audio.newSource(sound_paths[k][k2], "static")
+						buffer_sounds[k][k2][k3] = love.audio.newSource(sound_data)
 					end
 				end
 			end
 		else
-			if(love.filesystem.getInfo(sound_paths[k])) then
+			local path = v
+			if love.filesystem.getInfo(applied_packs_path..path) then
+				path = applied_packs_path..path
+			end
+			if(love.filesystem.getInfo(path)) then
 				-- this file exists
 				buffer_sounds[k] = {}
+				local sound_data = love.sound.newSoundData(path)
 				for k2 = 1, config.sound_sources do
-					buffer_sounds[k][k2] = love.audio.newSource(sound_paths[k], "static")
+					buffer_sounds[k][k2] = love.audio.newSource(sound_data)
 				end
 				sounds_played[k] = 0
 			end
@@ -76,6 +87,9 @@ function generateSoundTable()
 end
 
 local function playRawSE(audio_source)
+	if type(audio_source) == "table" then
+		error("Tried to play a table.")
+	end
 	audio_source:setVolume(config.sfx_volume)
 	if audio_source:isPlaying() then
 		audio_source:stop()

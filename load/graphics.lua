@@ -1,28 +1,47 @@
 local image_formats = {"png", "jpg", "bmp", "tga"}
 local function loadImageTable(image_table, path_table)
+	local is_packs_present = #config.resource_packs_applied > 0
 	for k,v in pairs(path_table) do
-		if(type(v) == "table") then
+		if type(v) == "table" then
 			-- list of subimages
 			for k2,v2 in pairs(v) do
+				local result_path = v2
 				for _, v3 in pairs(image_formats) do
-					if(love.filesystem.getInfo(v2.."."..v3)) then
-						-- this file exists
-						image_table[k] = image_table[k] or {}
-						image_table[k][k2] = love.graphics.newImage(v2.."."..v3)
+					local local_path = v2.."."..v3
+					if love.filesystem.getInfo(local_path) then
+						result_path = local_path
+						if not is_packs_present then break end
+					end
+					if love.filesystem.getInfo(applied_packs_path..local_path) then
+						result_path = applied_packs_path..local_path
 						break
 					end
+				end
+				if love.filesystem.getInfo(result_path) then
+					-- this file exists
+					image_table[k] = image_table[k] or {}
+					image_table[k][k2] = love.graphics.newImage(result_path)
 				end
 				if image_table[k][k2] == nil then
 					error(("Image (%s) not found!"):format(v2))
 				end
 			end
 		else
+			local result_path = v
 			for _, v2 in pairs(image_formats) do
-				if(love.filesystem.getInfo(v.."."..v2)) then
-					-- this file exists
-					image_table[k] = love.graphics.newImage(v.."."..v2)
+				local local_path = v.."."..v2
+				if love.filesystem.getInfo(local_path) then
+					result_path = local_path
+					if not is_packs_present then break end
+				end
+				if love.filesystem.getInfo(applied_packs_path..local_path) then
+					result_path = applied_packs_path..local_path
 					break
 				end
+			end
+			if love.filesystem.getInfo(result_path) then
+				-- this file exists
+				image_table[k] = love.graphics.newImage(result_path)
 			end
 			if image_table[k] == nil then
 				error(("Image (%s) not found!"):format(v))
@@ -30,36 +49,84 @@ local function loadImageTable(image_table, path_table)
 		end
 	end
 end
+
+--It's a pseudo-random string to avoid most folder collisions.
+applied_packs_path = ""
+
 backgrounds = {}
 backgrounds_paths = {
-	[0] = "res/backgrounds/0",
-	"res/backgrounds/100",
-	"res/backgrounds/200",
-	"res/backgrounds/300",
-	"res/backgrounds/400",
-	"res/backgrounds/500",
-	"res/backgrounds/600",
-	"res/backgrounds/700",
-	"res/backgrounds/800",
-	"res/backgrounds/900",
-	"res/backgrounds/1000",
-	"res/backgrounds/1100",
-	"res/backgrounds/1200",
-	"res/backgrounds/1300",
-	"res/backgrounds/1400",
-	"res/backgrounds/1500",
-	"res/backgrounds/1600",
-	"res/backgrounds/1700",
-	"res/backgrounds/1800",
-	"res/backgrounds/1900",
 	title = "res/backgrounds/title",
 	title_no_icon = "res/backgrounds/title-no-icon",
 	title_night = "res/backgrounds/title-night",
 	snow = "res/backgrounds/snow",
-	input_config = "res/backgrounds/options-input",
-	game_config = "res/backgrounds/options-game",
+	options_input = "res/backgrounds/options-input",
+	options_game = "res/backgrounds/options-game",
 }
-loadImageTable(backgrounds, backgrounds_paths)
+named_backgrounds = {
+	"title", "title_no_icon", "title_night",
+	"snow", "options_input", "options_game"
+}
+current_playing_bgs = {}
+extended_bgs = {}
+
+local bgpath = "res/backgrounds/%s"
+
+-- helper method to populate backgrounds
+local function createBackgroundIfExists(name, file_name)
+	local formatted_bgpath = bgpath:format(tostring(file_name))
+
+	-- see if background is an extension of another background
+	if extended_bgs[file_name] ~= nil then
+		local copy_bg = extended_bgs[file_name]
+		copy_bg = copy_bg / 100
+		backgrounds[name] = backgrounds[copy_bg]
+		return true
+	end
+
+	--loadImageTable already deals with loading images.
+	if backgrounds[name] ~= nil then
+		return true
+	end
+	-- try creating video background
+	if love.filesystem.getInfo(formatted_bgpath .. ".ogv") then
+		local tempBgPath = formatted_bgpath .. ".ogv"
+		backgrounds[name] = love.graphics.newVideo(
+			tempBgPath, {["audio"] = false}
+		)
+		-- you can set audio to true, but the video will not loop
+		-- properly if audio extends beyond video frames
+		return true
+	end
+	return false
+end
+
+local function stopOtherBgs(bg)
+	if #current_playing_bgs == 0 and bg:typeOf("Video") then
+		current_playing_bgs[#current_playing_bgs+1] = bg
+	end
+
+	if #current_playing_bgs >= 1 then
+		while current_playing_bgs[1] ~= bg and #current_playing_bgs >= 1 do
+			current_playing_bgs[1]:pause()
+			current_playing_bgs[1]:rewind()
+			table.remove(current_playing_bgs, 1)
+		end
+	end
+
+end
+
+function fetchBackgroundAndLoop(id)
+	local bg = backgrounds[id]
+
+	if bg:typeOf("Video") and not bg:isPlaying() then
+		bg:rewind()
+		bg:play()
+	end
+
+	stopOtherBgs(bg)
+
+	return bg
+end
 
 -- in order, the colors are:
 -- red, orange, yellow, green, cyan, blue
@@ -122,7 +189,6 @@ blocks_paths = {
 	}
 }
 
-loadImageTable(blocks, blocks_paths)
 ColourSchemes = {
 	Arika = {
 		I = "R",
@@ -160,4 +226,114 @@ misc_graphics_paths = {
 	santa = "res/img/santa",
 	icon = "res/img/cambridge_transparent"
 }
-loadImageTable(misc_graphics, misc_graphics_paths)
+
+-- utility function to allow any size background to be used
+-- this will stretch the background to 4:3 aspect ratio
+function drawBackground(id)
+	local bg_object = fetchBackgroundAndLoop(id)
+	drawSizeIndependentImage(bg_object, 0, 0, 0, 640, 480)
+end
+
+
+local previous_selected_packs = {}
+local initial_load = true
+
+function loadResources()
+	local random_numbers = {}
+	for i = 1, 32 do
+		random_numbers[#random_numbers+1] = love.math.random(1, 127)
+	end
+	applied_packs_path = table.concat(random_numbers)
+	if not initial_load and equals(previous_selected_packs, config.resource_packs_applied) then
+		return
+	end
+	local resource_pack_indexes = {}
+	local resource_packs = love.filesystem.getDirectoryItems("resourcepacks")
+	for key, value in pairs(resource_packs) do
+		if value:sub(-4) == ".zip" and love.filesystem.getInfo("resourcepacks/"..value, "file") then
+			resource_pack_indexes[value] = key
+		end
+	end
+	for k, v in pairs(previous_selected_packs) do
+		love.filesystem.unmount("resourcepacks/"..v)
+	end
+	if type(config.resource_packs_applied) == "table" then
+		for k, v in pairs(config.resource_packs_applied) do
+			if resource_pack_indexes[v] then
+				love.filesystem.mount("resourcepacks/"..v, applied_packs_path.."res/")
+			elseif not previous_selected_packs[k] then
+				table.remove(config.resource_packs_applied, k)
+			end
+		end
+	end
+	
+	if not initial_load or #config.resource_packs_applied > 0 then
+		love.graphics.setCanvas()
+		love.graphics.clear()
+		love.graphics.setFont(font_3x5_4)
+		love.graphics.printf("Loading resource packs...", 0, 160, 640, "center")
+		love.graphics.setColor(0, 0, 0, 0.5)
+		love.graphics.present()
+	end
+
+	backgrounds = {}
+	blocks = {}
+	misc_graphics = {}
+	backgrounds_paths = {
+		title = "res/backgrounds/title",
+		title_no_icon = "res/backgrounds/title-no-icon",
+		title_night = "res/backgrounds/title-night",
+		snow = "res/backgrounds/snow",
+		options_input = "res/backgrounds/options-input",
+		options_game = "res/backgrounds/options-game",
+	}
+	local previous_bg_index = 0
+	local bg_index = 0
+	while true do
+		local formatted_bgpath = bgpath:format(tostring(bg_index*100))
+		for key, value in pairs(image_formats) do
+			if love.filesystem.getInfo(formatted_bgpath.."."..value) then
+				backgrounds_paths[bg_index] = formatted_bgpath
+				bg_index = bg_index + 1
+				break
+			end
+		end
+		if previous_bg_index == bg_index then
+			break
+		end
+		previous_bg_index = bg_index
+	end
+	loadImageTable(backgrounds, backgrounds_paths)
+	loadImageTable(blocks, blocks_paths)
+	loadImageTable(misc_graphics, misc_graphics_paths)
+
+	--#region Backgrounds stuff. Warning: Code duplication
+	
+	local function loadExtendedBgs()
+		--Dynamic reloading, ey?
+		package.loaded["res.backgrounds.extend_section_bg"] = nil
+		extended_bgs = require("res.backgrounds.extend_section_bg")
+	end
+
+	-- error handling for if there is no extend_section_bg
+	if pcall(loadExtendedBgs) then end
+
+	-- create section backgrounds
+	local section = 0
+	while (createBackgroundIfExists(section, section*100)) do
+		section = section + 1
+	end
+	
+	-- create named backgrounds
+	for index, value in ipairs(named_backgrounds) do
+		createBackgroundIfExists(value, string.gsub(value, "_", "-"))
+	end
+	--#endregion
+	generateSoundTable()
+
+	collectgarbage("collect")
+
+	initial_load = false
+
+	previous_selected_packs = copy(config.resource_packs_applied)
+end

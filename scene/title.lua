@@ -3,7 +3,7 @@ local TitleScene = Scene:extend()
 TitleScene.title = "Title"
 TitleScene.restart_message = false
 
-local enter_pressed = false
+local enter_pressed = not (config and config.input)
 local menu_frames = 0
 
 local main_menu_screens = {
@@ -45,6 +45,20 @@ function TitleScene:new()
 	self.frames = 0
 	self.snow_bg_opacity = 0
 	self.y_offset = 0
+	self.press_enter_text = "Press Enter"
+	self.joystick_names = {}
+	self.joystick_menu_decide_binds = {}
+	if config and config.input then
+		if config.input.keys then
+			if not (
+				config.input.keys.menu_decide == nil or
+				config.input.keys.menu_decide == "return" or
+				config.input.keys.menu_decide == "kpenter"
+			) then
+				self.press_enter_text = self.press_enter_text.." or [" .. config.input.keys.menu_decide .. "] key"
+			end
+		end
+	end
 	self.text = ""
 	self.text_flag = false
 	if config.visualsettings.mode_select_type == 1 then
@@ -86,21 +100,19 @@ local block_offsets = {
 function TitleScene:render()
 	love.graphics.setFont(font_3x5_4)
 	love.graphics.setColor(1, 1, 1, 1 - self.snow_bg_opacity)
-	drawSizeIndependentImage(
-		backgrounds["title_no_icon"], -- title, title_night
-		0, 0, 0,
-		640, 480
-	)
+	drawBackground("title_no_icon") -- title, title_night
 
 	if not enter_pressed then
 		love.graphics.setFont(font_3x5_3)
 		love.graphics.printf("Welcome To Cambridge: Flooding Edge!", 80, 240, 480, "center")
 		if love.timer.getTime() % 2 <= 1 then
-			love.graphics.printf("Press Enter or "..(config.input.keys or {menu_decide = "null"}).menu_decide, 80, 360, 480, "center")
+			love.graphics.printf(self.press_enter_text, 80, 360, 480, "center")
 		end
 		love.graphics.setFont(font_3x5_2)
-		if not (self.love2d_major == 11 and self.love2d_minor == 3) then
+		if not (self.love2d_major == 11 and self.love2d_minor == 3) and not (self.love2d_major == 12 and self.love2d_minor == 0) then
 			love.graphics.printf({{1, 0, 0, 1}, ("LOVE %d.%d is a potentially unstable version for Cambridge in other OS such as macOS or Linux at the moment! Stick to 11.3 for now."):format(self.love2d_major, self.love2d_minor)}, 50, 60, 540, "center")
+		elseif (self.love2d_major == 12 and self.love2d_minor == 0) then
+			love.graphics.printf({{1, 1, 0, 1}, "Currently LOVE 12.0 is in development. Expect there be more bugs. Cambridge currently doesn't utilise the new features at the moment."}, 50, 60, 540, "center")
 		end
 		love.graphics.printf("This particular fork has a lot of changes, so expect that there'd be a lot of bugs!\nReport bugs found here to Tetro48, in detail.", 120, 280, 400, "center")
 	end
@@ -129,7 +141,7 @@ function TitleScene:render()
 
 	love.graphics.setFont(font_3x5_2)
 	love.graphics.setColor(1, 1, 1, self.snow_bg_opacity)
-	drawSizeIndependentImage(backgrounds["snow"], 0, 0, 0, 640, 480)
+	drawBackground("snow")
 
 	love.graphics.draw(
 		misc_graphics["santa"],
@@ -150,7 +162,7 @@ function TitleScene:render()
 
 	love.graphics.setColor(1, 1, 1, 1)
 	for i, screen in pairs(main_menu_screens) do
-		local b = CursorHighlight(40,280 + 20 * i,120,20)
+		local b = cursorHighlight(40,280 + 20 * i,120,20)
 		love.graphics.setColor(1,1,b,1)
 		love.graphics.printf(screen.title, math.min(40, -120 * i + (menu_frames * 24)), 280 + 20 * i, 120, "left")
 	end
@@ -180,13 +192,13 @@ function TitleScene:onInputPress(e)
 		end
 		return
 	end
-	if e.input == "menu_decide" or e.scancode == "return" then
+	if e.input == "menu_decide" then
 		playSE("main_decide")
 		scene = main_menu_screens[self.main_menu_state]()
-	elseif e.input == "up" or e.scancode == "up" then
+	elseif e.input == "menu_up" then
 		self:changeOption(-1)
 		playSE("cursor")
-	elseif e.input == "down" or e.scancode == "down" then
+	elseif e.input == "menu_down" then
 		self:changeOption(1)
 		playSE("cursor")
 	elseif e.input == "menu_back" or e.scancode == "backspace" or e.scancode == "delete" then

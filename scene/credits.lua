@@ -3,9 +3,10 @@ local CreditsScene = Scene:extend()
 CreditsScene.title = "Credits"
 
 function CreditsScene:new()
-    self.frames = 0
+    self.time = 0
     -- higher = faster
     self.scroll_speed = 1
+    pitchBGM(1)
     switchBGM("credit_roll", "gm3")
 
     DiscordRPC:update({
@@ -40,7 +41,7 @@ function CreditsScene:new()
             "sinefuse - stackfuse"
         },
         {
-            title = "Flooding edge Maintainer",
+            title = "Flooding Edge Maintainer",
             "Tetro48"
         },
         {
@@ -100,7 +101,7 @@ function CreditsScene:new()
             "Rusty's Systemspace",
             "Cambridge Discord",
             "And to you, the player!"
-        }
+        },
     }
     local y_calculation = 550
     for key, value in pairs(self.credit_blocks) do
@@ -108,17 +109,23 @@ function CreditsScene:new()
         y_calculation = y_calculation + (#value * 18) + 80
     end
     self.final_y = y_calculation + 120
+    if bgm.credit_roll and bgm.credit_roll.gm3 then
+        self.music_duration = bgm.credit_roll.gm3:getDuration("seconds") * 60 - 120
+    else
+        self.music_duration = 4000
+    end
+    self.hold_speed = math.max(2, math.floor(self.music_duration / 600))
 end
 
 function CreditsScene:update()
-    if love.window.hasFocus() then
-        self.frames = self.frames + self.scroll_speed
-    end
-    if self.frames >= self.final_y + 150 then
+    local time_fragment = (self.final_y / self.music_duration)
+    self.time = self.time + (time_fragment * self.scroll_speed)
+    if self.time >= self.final_y + (time_fragment * 120) then
         playSE("mode_decide")
         scene = TitleScene()
+        pitchBGM(1)
         switchBGM(nil)
-    elseif self.frames >= self.final_y then
+    elseif self.time >= self.final_y then
         fadeoutBGM(2)
     end
 end
@@ -128,7 +135,7 @@ local alignment_table = {"right", "center", "left"}
 local alignment_coordinates = {320, 160}
 
 function CreditsScene:render()
-    local offset = self.frames
+    local offset = self.time
 
     local credits_pos = config.visualsettings.credits_position
 
@@ -137,11 +144,7 @@ function CreditsScene:render()
     local align = alignment_table[4-credits_pos]
 
     love.graphics.setColor(1, 1, 1, 1)
-	drawSizeIndependentImage(
-		backgrounds[19],
-		0, 0, 0,
-        640, 480
-    )
+	drawBackground(19)
 
     love.graphics.setFont(font_3x5_4)
     love.graphics.printf("Cambridge Credits", text_x, 500 - offset, 320, align)
@@ -156,53 +159,25 @@ function CreditsScene:render()
             love.graphics.printf(value, text_x, block.y + 30 + key * 18 - offset, 320, align)
         end
     end
-    -- love.graphics.print("Game Developers", 320, 550 - offset)
-    -- love.graphics.print("Project Heads", 320, 640 - offset)
-    -- love.graphics.print("Notable Game Developers", 320, 750 - offset)
-    -- love.graphics.print("Flooding edge Maintainer", 320, 1000 - offset)
-    -- love.graphics.print("Special Thanks", 320, 1070 - offset)
-
-    -- love.graphics.print("Oshisaure\nJoe Zeng", 320, 590 - offset)
-    -- love.graphics.print("Mizu\nMarkGamed\nHailey", 320, 680 - offset)
-    -- love.graphics.print(
-    --     "2Tie - TGMsim\nAxel Fox - Multimino\nDr Ocelot - Tetra Legends\n" ..
-    --     "Electra - ZTrix\nFelicity/nightmareci/kdex - Shiromino\n" ..
-    --     "Mine - Tetra Online\nMrZ - Techmino\n" ..
-    --     "Phoenix Flare - Master of Blocks\nRayRay26 - Spirit Drop\n" ..
-    --     "Rin - Puzzle Trial\nsinefuse - stackfuse",
-    --     320, 790 - offset
-    -- )
-    -- love.graphics.print("Tetro48", 320, 1040 - offset)
-    -- love.graphics.print(
-    --     "321MrHaatz\nAdventium\nAgentBasey\nArchina\nAurora\n" ..
-    --     "Caithness\nCheez\ncolour_thief\nCommando\nCublex\n" ..
-    --     "CylinderKnot\neightsixfivezero\nEricICX\nGesomaru\n" ..
-    --     "gizmo4487\nJBroms\nKirby703\nKitaru\n" ..
-    --     "M1ssing0\nMattMayuga\nMyPasswordIsWeak\n" ..
-    --     "Nikki Karissa\nnim\noffwo\nOliver\nPineapple\npokemonfan1937\n" ..
-    --     "Pyra Neoxi\nRDST64\nRocketLanterns\nRustyFoxxo\n" ..
-    --     "saphie\nShelleloch\nSimon\nstratus\nSuper302\n" ..
-    --     "switchpalacecorner\nterpyderp\nTetrian22\nTetro48\nThatCookie\n" ..
-    --     "TimmSkiller\nTrixciel\nuser74003\nZaptorZap\nZircean\n" ..
-    --     "All other contributors and friends!\nThe Absolute PLUS Discord\n" ..
-    --     "Tetra Legends Discord\nTetra Online Discord\nMultimino Discord\n" ..
-    --     "Hard Drop Discord\nRusty's Systemspace\nCambridge Discord\n" ..
-    --     "And to you, the player!",
-    --     320, 1110 - offset
-    -- )
 end
 
 function CreditsScene:onInputPress(e)
-    if e.type == "mouse" and e.button == 1 then
-        scene = TitleScene()
-        switchBGM(nil)
+    if e.type == "mouse" then
+        if e.button == 1 then
+            self.scroll_speed = self.hold_speed
+            pitchBGM(self.hold_speed)
+        elseif e.button == 2 then
+            scene = TitleScene()
+            pitchBGM(1)
+            switchBGM(nil)
     end
     if e.scancode == "space" then
-        self.scroll_speed = 4
+        self.scroll_speed = self.hold_speed
+        pitchBGM(self.hold_speed)
     end
-    if e.input == "menu_decide" or e.scancode == "return" or
-       e.input == "menu_back" or e.scancode == "delete" or e.scancode == "backspace" then
+    if e.input == "menu_decide" or e.input == "menu_back" then
         scene = TitleScene()
+        pitchBGM(1)
         switchBGM(nil)
 	end
 end
@@ -210,6 +185,7 @@ end
 function CreditsScene:onInputRelease(e)
     if e.scancode == "space" then
         self.scroll_speed = 1
+        pitchBGM(1)
     end
 end
 
