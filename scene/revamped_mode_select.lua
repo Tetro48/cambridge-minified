@@ -54,11 +54,6 @@ function ModeSelectScene:new()
 	self.auto_mode_offset = 0
     self.auto_ruleset_offset = 0
 	self.start_frames, self.starting = 0, false
-	DiscordRPC:update({
-		details = "In menus",
-		state = "Chosen ??? and ???.",
-		largeImageKey = "ingame-000"
-	})
 end
 
 local menu_DAS_hold = {["up"] = 0, ["down"] = 0, ["left"] = 0, ["right"] = 0}
@@ -134,11 +129,6 @@ function ModeSelectScene:update()
 	if self:menuDASInput(self.das_right, "right", 15, 4) then
 		self:changeRuleset(1)
 	end
-	DiscordRPC:update({
-		details = "In menus",
-		state = "Chosen ".. ((self.game_mode_folder[self.menu_state.mode] or {name = "no mode"}).name) .." and ".. ((self.ruleset_folder[self.menu_state.ruleset] or {name = "no ruleset"}).name) ..".",
-		largeImageKey = "ingame-000"
-	})
 end
 --Takes cares of both normal numbers and bigints.
 local function toFormattedValue(value)

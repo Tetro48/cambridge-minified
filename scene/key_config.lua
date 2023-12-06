@@ -145,11 +145,6 @@ function KeyConfigScene:new()
 	self.menu_state = 1
 
 	self.safety_frames = 0
-
-	DiscordRPC:update({
-		details = "In settings",
-		state = "Changing key config",
-	})
 end
 
 function KeyConfigScene:update()

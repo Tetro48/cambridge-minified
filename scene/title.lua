@@ -66,12 +66,6 @@ function TitleScene:new()
 	else
 		main_menu_screens[1] = RevModeSelectScene
 	end
-	DiscordRPC:update({
-		details = "In menus",
-		state = mainmenuidle[love.math.random(#mainmenuidle)],
-		largeImageKey = "icon2",
-		largeImageText = version
-	})
 end
 
 function TitleScene:update()
@@ -207,9 +201,6 @@ function TitleScene:onInputPress(e)
 		self.text = self.text .. (e.scancode or "")
 		if self.text == "ffffff" then
 			self.text_flag = true
-			DiscordRPC:update({
-				largeImageKey = "snow"
-			})
 		end
 	end
 end

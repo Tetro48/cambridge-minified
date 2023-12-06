@@ -49,11 +49,6 @@ function ReplayScene:new(replay, game_mode, ruleset)
 	self.relative_frames = 0
 	self.show_invisible = false
 	self.frame_steps = 0
-	DiscordRPC:update({
-		details = "Viewing a replay",
-		state = self.game.name,
-		largeImageKey = "ingame-"..self.game:getBackground().."00"
-	})
 end
 
 function ReplayScene:replayCutoff()
@@ -101,11 +96,6 @@ function ReplayScene:update()
 		config.sfx_volume = pre_sfx_volume --Returns the volume to normal.
 		self.paused = true
 	end
-	DiscordRPC:update({
-		details = self.rerecord and self.game.rpc_details or ("Viewing a".. (self.replay["toolassisted"] and " tool-assisted" or "") .." replay"),
-		state = self.game.name,
-		largeImageKey = "ingame-"..self.game:getBackground().."00"
-	})
 	
 	if love.thread.getChannel("savestate"):peek() == "save" then
 		love.thread.getChannel("savestate"):clear()

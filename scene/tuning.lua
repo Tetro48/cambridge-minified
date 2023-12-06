@@ -27,10 +27,6 @@ TuningScene.options = {
 local optioncount = #TuningScene.options
 
 function TuningScene:new()
-    DiscordRPC:update({
-        details = "In settings",
-        state = "Changing tuning settings",
-    })
     self.highlight = 1
 
     self.dasSlider = newSlider(290, 225, 400, config.das, 0, 20, function(v) config.das = math.floor(v) end, {width=20, knob="circle", track="roundrect"})

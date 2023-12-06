@@ -19,11 +19,6 @@ function HighscoreScene:new()
 	self.menu_list_y = 20
 	self.auto_menu_offset = 0
 
-	DiscordRPC:update({
-		details = "In menus",
-		state = "Peeking their own highscores",
-		largeImageKey = "ingame-000"
-	})
 end
 function HighscoreScene:update()
 	if self.auto_menu_offset ~= 0 then

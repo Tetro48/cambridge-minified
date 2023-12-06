@@ -83,11 +83,6 @@ function ConfigScene:new()
 		end
 	end
 	--#endregion
-
-	DiscordRPC:update({
-		details = "In settings",
-		state = "Changing audio settings",
-	})
 end
 
 function ConfigScene:update()

@@ -21,11 +21,6 @@ function ReplaySelectScene:new()
 		replays_loaded = 0
 		loadReplayList()
 		self.state_string = ""
-		DiscordRPC:update({
-			details = "In menus",
-			state = "Loading replays...",
-			largeImageKey = "ingame-000"
-		})
 		return
 	end
 	self.display_error = false
@@ -43,11 +38,6 @@ function ReplaySelectScene:new()
 	self.das = 0
 	self.height_offset = 0
 	self.auto_menu_offset = 0
-	DiscordRPC:update({
-		details = "In menus",
-		state = "Choosing a replay",
-		largeImageKey = "ingame-000"
-	})
 end
 
 local function popFromChannel(channel_name)
@@ -165,12 +155,6 @@ function ReplaySelectScene:update()
 		self:changeOption(change)
 		self.das = self.das - 4
 	end
-
-	DiscordRPC:update({
-		details = "In menus",
-		state = "Choosing a replay",
-		largeImageKey = "ingame-000"
-	})
 end
 
 function ReplaySelectScene:render()

@@ -65,11 +65,6 @@ function ConfigScene:new()
 	-- load current config
 	self.config = config.input
 	self.highlight = 1
-
-	DiscordRPC:update({
-		details = "In settings",
-		state = "Changing game settings",
-	})
 end
 
 function ConfigScene:render()

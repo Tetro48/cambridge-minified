@@ -33,11 +33,6 @@ function GameScene:new(game_mode, ruleset, inputs)
 	self.game.pause_time = 0
 	self.game.pause_timestamps = {}
 	self.frame_steps = 0
-	DiscordRPC:update({
-		details = self.game.rpc_details,
-		state = self.game.name,
-		largeImageKey = "ingame-"..self.game:getBackground().."00"
-	})
 end
 
 function GameScene:update()
@@ -54,11 +49,6 @@ function GameScene:update()
 		end
 		self.game:update(inputs, self.ruleset)
 		self.game.grid:update()
-		DiscordRPC:update({
-			details = self.game.rpc_details,
-			state = self.game.name,
-			largeImageKey = "ingame-"..self.game:getBackground().."00"
-		})
 	end
 end
 

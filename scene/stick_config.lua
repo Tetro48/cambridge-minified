@@ -99,11 +99,6 @@ function StickConfigScene:new()
 	if not config.input then config.input = {} end
 
 	self.safety_frames = 0
-
-	DiscordRPC:update({
-		details = "In settings",
-		state = "Changing joystick config",
-	})
 end
 --too many impl details and substrings
 function StickConfigScene:formatBinding(binding)

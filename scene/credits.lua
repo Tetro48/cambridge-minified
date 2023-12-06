@@ -9,11 +9,6 @@ function CreditsScene:new()
     pitchBGM(1)
     switchBGM("credit_roll", "gm3")
 
-    DiscordRPC:update({
-        details = "Watching the credits",
-        state = "Thanks for playing the game!",
-        largeImageKey = "ingame-1900",
-    })
     self.credit_blocks = {
         {
             title = "Game Developers",
