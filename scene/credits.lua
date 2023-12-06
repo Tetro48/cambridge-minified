@@ -170,6 +170,7 @@ function CreditsScene:onInputPress(e)
             scene = TitleScene()
             pitchBGM(1)
             switchBGM(nil)
+        end
     end
     if e.scancode == "space" then
         self.scroll_speed = self.hold_speed
