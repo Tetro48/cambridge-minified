@@ -10,6 +10,8 @@ local main_menu_screens = {
 	ModeSelectScene,
 	HighscoresScene,
 	ReplaySelectScene,
+	JoinDiscordFunc,
+	ReportBugFunc,
 	SettingsScene,
 	CreditsScene,
 	ExitScene,
@@ -40,7 +42,7 @@ local mainmenuidle = {
 }
 
 function TitleScene:new()
-    self.love2d_major, self.love2d_minor, self.love2d_revision = love.getVersion()
+	self.love2d_major, self.love2d_minor, self.love2d_revision = love.getVersion()
 	self.main_menu_state = 1
 	self.frames = 0
 	self.snow_bg_opacity = 0
@@ -103,12 +105,12 @@ function TitleScene:render()
 			love.graphics.printf(self.press_enter_text, 80, 360, 480, "center")
 		end
 		love.graphics.setFont(font_3x5_2)
-		if not (self.love2d_major == 11 and self.love2d_minor == 3) and not (self.love2d_major == 12 and self.love2d_minor == 0) then
-			love.graphics.printf({{1, 0, 0, 1}, ("LOVE %d.%d is a potentially unstable version for Cambridge in other OS such as macOS or Linux at the moment! Stick to 11.3 for now."):format(self.love2d_major, self.love2d_minor)}, 50, 60, 540, "center")
+		if not (self.love2d_major == 11 and (self.love2d_minor == 3 or self.love2d_minor == 5)) and not (self.love2d_major == 12 and self.love2d_minor == 0) then
+			love.graphics.printf({{1, 0, 0, 1}, ("LOVE %d.%d is a potentially unstable version for Cambridge in other OS such as macOS or Linux at the moment! Stick to 11.3 or 11.5 for now."):format(self.love2d_major, self.love2d_minor)}, 50, 60, 540, "center")
 		elseif (self.love2d_major == 12 and self.love2d_minor == 0) then
 			love.graphics.printf({{1, 1, 0, 1}, "Currently LOVE 12.0 is in development. Expect there be more bugs. Cambridge currently doesn't utilise the new features at the moment."}, 50, 60, 540, "center")
 		end
-		love.graphics.printf("This particular fork is the modified Cambridge: Flooding Edge, aimed to shrink game size!\nReport bugs found here to Tetro48, in detail.", 120, 280, 400, "center")
+		love.graphics.printf("This is the modified Cambridge v0.4.x-dev, aimed to shrink game size!\nReport bugs found here to the repository, in detail.", 0, 280, 640, "center")
 	end
 	local x, y
 	if enter_pressed then

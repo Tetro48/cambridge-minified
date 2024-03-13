@@ -14,12 +14,12 @@ function loadFromFile(filename)
 		if file_data == nil then
 			return {} -- new object
 		end
+	end
+	local result, save_data = pcall(binser.deserialize, file_data)
+	if result == false or save_data == nil then
+		return {} -- new object
 	else
 		love.filesystem.write(filename..".backup", file_data) -- backup creation if sucessful
-	end
-	local save_data = binser.deserialize(file_data)
-	if save_data == nil then
-		return {} -- new object
 	end
 	return save_data[1]
 end
@@ -109,7 +109,7 @@ function initConfig()
 	if not config.master_volume then config.master_volume = 1 end
 	if not config.sfx_volume then config.sfx_volume = 0.5 end
 	if not config.bgm_volume then config.bgm_volume = 0.5 end
-	
+
 	if config.fullscreen == nil then config.fullscreen = false end
 	if config.secret == nil then config.secret = false end
 
@@ -164,6 +164,9 @@ function initConfig()
 		end
 		if config.current_mode then current_mode = config.current_mode end
 		if config.current_ruleset then current_ruleset = config.current_ruleset end
+		if config.current_folder_selections then
+			current_folder_selections = config.current_folder_selections
+		end
 		scene = TitleScene()
 		--if updateInputConfig still fails
 		if inputUpdaterConditions(config.input.keys) then

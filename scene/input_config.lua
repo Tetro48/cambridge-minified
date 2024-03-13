@@ -3,21 +3,21 @@ local ConfigScene = Scene:extend()
 ConfigScene.title = "Input Config"
 
 local menu_screens = {
-    KeyConfigScene,
-    StickConfigScene
+	KeyConfigScene,
+	StickConfigScene
 }
 
 function ConfigScene:new()
-    self.menu_state = 1
+	self.menu_state = 1
 end
 
 function ConfigScene:render()
-    love.graphics.setColor(1, 1, 1, 1)
-    drawBackground("options_input")
+	love.graphics.setColor(1, 1, 1, 1)
+	drawBackground("options_input")
 
-    love.graphics.setFont(font_8x11)
-    love.graphics.print("INPUT CONFIG", 80, 43)
-	
+	love.graphics.setFont(font_8x11)
+	love.graphics.print("INPUT CONFIG", 80, 43)
+
 	if config.input then
 		local b = cursorHighlight(20, 40, 50, 30)
 		love.graphics.setColor(1, 1, b, 1)
@@ -25,19 +25,19 @@ function ConfigScene:render()
 		love.graphics.setColor(1, 1, 1, 1)
 	end
 
-    love.graphics.setFont(font_3x5_2)
-    love.graphics.print("Which controls do you want to configure?", 80, 90)
+	love.graphics.setFont(font_3x5_2)
+	love.graphics.print("Which controls do you want to configure?", 80, 90)
 
-    love.graphics.setColor(1, 1, 1, 0.5)
+	love.graphics.setColor(1, 1, 1, 0.5)
 	love.graphics.rectangle("fill", 75, 118 + 50 * self.menu_state, 200, 33)
 
-    love.graphics.setFont(font_3x5_3)
+	love.graphics.setFont(font_3x5_3)
 	love.graphics.setColor(1, 1, 1, 1)
 	for i, screen in pairs(menu_screens) do
 		local b = cursorHighlight(80,120 + 50 * i,200,50)
 		love.graphics.setColor(1,1,b,1)
 		love.graphics.printf(screen.title, 80, 120 + 50 * i, 200, "left")
-    end
+	end
 end
 
 function ConfigScene:changeOption(rel)

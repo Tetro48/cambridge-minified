@@ -14,6 +14,8 @@ function CreditsScene:new()
             title = "Game Developers",
             "Oshisaure",
             "Joe Zeng",
+            "MillaBasset",
+            "Tetro48",
         },
         {
             title = "Project Heads",
@@ -32,12 +34,6 @@ function CreditsScene:new()
             "MrZ - Techmino",
             "Phoenix Flare - Master of Blocks",
             "RayRay26 - Spirit Drop",
-            "Rin - Puzzle Trial",
-            "sinefuse - stackfuse"
-        },
-        {
-            title = "Flooding Edge Maintainer",
-            "Tetro48"
         },
         {
             title = "Special Thanks",
@@ -80,7 +76,6 @@ function CreditsScene:new()
             "switchpalacecorner",
             "terpyderp",
             "Tetrian22",
-            "Tetro48",
             "ThatCookie",
             "TimmSkiller",
             "Trixciel",
@@ -143,8 +138,8 @@ function CreditsScene:render()
 
     love.graphics.setFont(font_3x5_4)
     love.graphics.printf("Cambridge Credits", text_x, 500 - offset, 320, align)
-    love.graphics.printf("THANK YOU\nFOR PLAYING!", text_x, math.max(self.final_y - offset, 240), 320, align)
-    love.graphics.printf("- Milla", text_x, math.max(self.final_y + 80 - offset, 320), 320, align)
+    love.graphics.setFont(font_3x5_3)
+    love.graphics.printf("THANK YOU FOR PLAYING!", text_x, math.max(self.final_y - offset, 240), 320, align)
 
     for index, block in ipairs(self.credit_blocks) do
         love.graphics.setFont(font_3x5_3)
