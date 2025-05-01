@@ -169,21 +169,6 @@ function clamp(x, min, max)
 	return x < min and min or (x > max and max or x)
 end
 
-
----@param image love.Image
----@param origin_x integer
----@param origin_y integer
----@param draw_width integer
----@param draw_height integer
-function drawSizeIndependentImage(image, origin_x, origin_y, r, draw_width, draw_height, offset_x, offset_y, ...)
-	offset_x = offset_x or 0
-	offset_y = offset_y or 0
-	local width, height = image:getDimensions()
-	local width_scale_factor = width / draw_width
-	local height_scale_factor = height / draw_height
-	love.graphics.draw(image, origin_x, origin_y, r, 1/width_scale_factor, 1/height_scale_factor, offset_x*width_scale_factor, offset_y*height_scale_factor, ...)
-end
-
 ---@param h number
 ---@param s number
 ---@param v number
@@ -279,27 +264,35 @@ function cursorHoverArea(x,y,w,h)
 	return (mouse_x > x and mouse_x < x+w and mouse_y > y and mouse_y < y+h)
 end
 
----Interpolates in a smooth fashion if Smooth Scrolling option is enabled in visual settings. 
----@param input number
----@param destination number
+---@param a number
+---@param b number
+---@param t number
 ---@return number
-function interpolateNumber(input, destination, division_factor)
-	division_factor = division_factor or 4
+function math.lerp(a, b, t)
+	return a + (b - a) * t
+end
+
+---@param a number
+---@param b number
+---@param decay number
+---@param dt number
+---@return number
+function expDecay(a, b, decay, dt)
+	return b+(a-b)*math.exp(-decay*dt)
+end
+
+---Interpolates using expDecay if Smooth Scrolling option is enabled in visual settings.
+---@param a number
+---@param b number
+---@return number
+function interpolateNumber(a, b, decay, dt)
 	if config.visualsettings["smooth_scroll"] == 2 then
-		return destination
+		return b
 	end
-	if destination > input then
-		input = input + (destination - input) / division_factor
-		if input > destination - 0.02 then
-			input = destination
-		end
-	elseif destination < input then
-		input = input + (destination - input) / division_factor
-		if input < destination + 0.02 then
-			input = destination
-		end
-	end
-	return input
+	-- higher -> faster
+	decay = decay or 17.260924347109
+	dt = dt or getDeltaTime()
+	return expDecay(a, b, decay, dt)
 end
 
 ---note: if you input just a string here, it'll output an input. it ignores tables within input table
@@ -325,27 +318,28 @@ end
 ---@param align "center"|"justify"|"left"|"right"
 function drawWrappingText(text, x, y, limit, align, ...)
 	local cur_font = love.graphics.getFont()
+	local font_height = cur_font:getHeight()
 	local text_str = getStringFromTable(text)
 	local string_width = cur_font:getWidth(text_str)
 	local offset_x = 0
 	if string_width > limit then
-		local new_canvas = love.graphics.newCanvas(limit, cur_font:getHeight())
+		local screen_width, screen_height = love.graphics.getDimensions()
+		local scale_factor = math.min(screen_width / 640, screen_height / 480)
 		local max_offset = string_width - limit + 4
 		offset_x = (0.5 + clamp(math.sin(love.timer.getTime() / (1 + max_offset / 250)) * 2, -1, 1) / 2) * max_offset
 		love.graphics.push("all")
-		love.graphics.origin()
 		love.graphics.setLineWidth(2)
-		love.graphics.setCanvas(new_canvas)
-		love.graphics.printf(text, -offset_x, 0, math.max(string_width, limit), align)
+		local left_x, left_y = love.graphics.transformPoint(x, y)
+		love.graphics.setScissor(left_x, left_y, limit*scale_factor, cur_font:getHeight()*scale_factor)
+		love.graphics.printf(text, x-offset_x, y, math.max(string_width, limit), align)
 		if offset_x > 0 then
-			love.graphics.line(1, 0, 1, cur_font:getHeight())
+			love.graphics.line(x+1, y, x+1, y+font_height)
 		end
 		if offset_x < max_offset then
-			love.graphics.line(limit - 1, 0, limit - 1, cur_font:getHeight())
+			love.graphics.line(x+limit - 1, y, x+limit - 1, y+font_height)
 		end
 		love.graphics.pop()
-		love.graphics.draw(new_canvas, x, y, ...)
-		new_canvas:release()
+		love.graphics.setScissor()
 	else
 		love.graphics.printf(text, x, y, limit, align, ...)
 	end
@@ -392,6 +386,34 @@ function stringWrapByLength(str, len)
 		return str
 	end
 	return new_str
+end
+
+function displayReplayInfoBox(replay_data)
+	local info_string = "Replay file view:\n"
+	info_string = info_string .. "Mode: " .. replay_data["mode"] .. " (" .. (replay_data["mode_hash"] or "???") .. ")\n"
+	info_string = info_string .. "Ruleset: " .. replay_data["ruleset"] .. " (" .. (replay_data["ruleset_hash"] or "???") .. ")\n"
+	info_string = info_string .. os.date("Timestamp: %c\n", replay_data["timestamp"])
+	if replay_data.cambridge_version then
+		if replay_data.cambridge_version ~= version then
+			info_string = info_string .. "Warning! The versions don't match!\nStuff may break, so, start at your own risk.\n"
+		end
+		info_string = info_string .. "Cambridge version for this replay: "..replay_data.cambridge_version.."\n"
+	end
+	if replay_data.pause_count and replay_data.pause_time then
+		info_string = info_string .. ("Pause count: %d\nTime Paused: %s\n"):format(replay_data.pause_count, formatTime(replay_data.pause_time))
+	end
+	if replay_data.sha256_table then
+		info_string = info_string .. ("SHA256 replay hashes:\nMode: %s\nRuleset: %s\n"):format(replay_data.sha256_table.mode, replay_data.sha256_table.ruleset)
+	end
+	if replay_data.highscore_data then
+		info_string = info_string .. "In-replay highscore data:\n\n"
+		for key, value in pairs(replay_data["highscore_data"]) do
+			info_string = info_string .. stringWrapByLength((key..": ".. toFormattedValue(value)), 75) .. "\n"
+		end
+	else
+		info_string = info_string .. "Legacy replay\nLevel: "..replay_data["level"]
+	end
+	love.window.showMessageBox(love.window.getTitle(), info_string, "info")
 end
 
 --alias functions

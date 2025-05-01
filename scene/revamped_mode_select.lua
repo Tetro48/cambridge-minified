@@ -36,20 +36,29 @@ function ModeSelectScene:new()
 		mode = current_mode,
 		ruleset = current_ruleset,
 	}
+	--#region Highscores variables
+	self.auto_sort_delay = 300
+	self.auto_sort_clock = 0
+	self.menu_slot_positions = {}
+	self.interpolated_menu_slot_positions = {}
+	--#endregion
 	self.secret_inputs = {}
+	self.secret_sequence = {}
+	self.sequencing_start_frames = 0
+	self.input_timers = {}
 	self.das_x, self.das_y = 0, 0
 	self.menu_mode_y = 20
 	self.menu_ruleset_x = 20
 	self.auto_mode_offset = 0
 	self.auto_ruleset_offset = 0
 	self.start_frames, self.starting = 0, false
-	self.safety_frames = 0
+	self.safety_frames = 2
+	HighscoresScene.removeEmpty()
 	self:refreshHighscores()
 end
 
 local menu_DAS_hold = {["up"] = 0, ["down"] = 0, ["left"] = 0, ["right"] = 0}
 local menu_DAS_frames = {["up"] = 0, ["down"] = 0, ["left"] = 0, ["right"] = 0}
-local menu_ARR = {[0] = 8, 6, 5, 4, 3, 2, 2, 2, 1}
 function ModeSelectScene:menuDASInput(input, input_string, das, arr_mul)
 	local result = false
 	arr_mul = arr_mul or 1
@@ -69,18 +78,39 @@ function ModeSelectScene:menuDASInput(input, input_string, das, arr_mul)
 end
 
 function ModeSelectScene:getMenuARR(number)
-	if number < 60 then
-		if (number / 30) > #menu_ARR then
-			return #menu_ARR
-		else
-			return menu_ARR[math.floor(number / 30)]
-		end
+	if config.tunings.mode_dynamic_arr == 2 then
+		return config.menu_arr
 	end
-	return math.ceil(32 / math.sqrt(number))
+	return 32 / (number ^ 0.45)
 end
 
 function ModeSelectScene:update()
 	switchBGM(nil)
+	for key, value in pairs(self.input_timers) do
+		self.input_timers[key] = value - 1
+		if value < 0 then
+			self.input_timers[key] = nil
+		end
+	end
+	if self.input_timers["reload"] == 0 then
+		unloadModules()
+		scene = ModeSelectScene()
+		scene.reload_time_remaining = 90
+		playSE("ihs")
+	end
+	if self.input_timers["secret_sequencing"] == 0 then
+		self.is_sequencing = true
+		self.first_input = true
+	end
+	if self.input_timers["stop_sequencing"] == 0 then
+		self.is_sequencing = false
+	end
+
+	if self.is_sequencing then
+		self.sequencing_start_frames = math.min(self.sequencing_start_frames + 1, 20)
+	else
+		self.sequencing_start_frames = math.max(self.sequencing_start_frames - 1, 0)
+	end
 	self.safety_frames = self.safety_frames - 1
 	if self.starting then
 		self.start_frames = self.start_frames + 1
@@ -88,6 +118,13 @@ function ModeSelectScene:update()
 			self:startMode()
 		end
 		return
+	end
+	if type(self.mode_highscore) == "table" and self.index_count >= 1 then
+		self.auto_sort_clock = self.auto_sort_clock + 1
+	end
+	if self.auto_sort_clock > self.auto_sort_delay then
+		self:autoSortHighscores()
+		self.auto_sort_clock = 0
 	end
 	if self.das_up or self.das_down then
 		self.das_y = self.das_y + 1
@@ -109,16 +146,16 @@ function ModeSelectScene:update()
 		if self.auto_ruleset_offset > 0 then self.auto_ruleset_offset = self.auto_ruleset_offset - 1 end
 		if self.auto_ruleset_offset < 0 then self.auto_ruleset_offset = self.auto_ruleset_offset + 1 end
 	end
-	if self:menuDASInput(self.das_up, "up", 12) then
+	if self:menuDASInput(self.das_up, "up", config.menu_das, config.menu_arr / 4) then
 		self:changeMode(-1)
 	end
-	if self:menuDASInput(self.das_down, "down", 12) then
+	if self:menuDASInput(self.das_down, "down", config.menu_das, config.menu_arr / 4) then
 		self:changeMode(1)
 	end
-	if self:menuDASInput(self.das_left, "left", 15, 4) then
+	if self:menuDASInput(self.das_left, "left", config.menu_das, config.menu_arr / 2) then
 		self:changeRuleset(-1)
 	end
-	if self:menuDASInput(self.das_right, "right", 15, 4) then
+	if self:menuDASInput(self.das_right, "right", config.menu_das, config.menu_arr / 2) then
 		self:changeRuleset(1)
 	end
 end
@@ -151,8 +188,8 @@ function ModeSelectScene:render()
 
 	local mode_selected, ruleset_selected = self.menu_state.mode, self.menu_state.ruleset
 
-	self.menu_mode_y = interpolateNumber(self.menu_mode_y / 20, mode_selected) * 20
-	self.menu_ruleset_x = interpolateNumber(self.menu_ruleset_x / 120, ruleset_selected) * 120
+	self.menu_mode_y = interpolateNumber(self.menu_mode_y, mode_selected * 20)
+	self.menu_ruleset_x = interpolateNumber(self.menu_ruleset_x, ruleset_selected * 120)
 
 	love.graphics.setColor(1, 1, 1, 0.5)
 	love.graphics.rectangle("fill", 20, 259 + (mode_selected * 20) - self.menu_mode_y, 240, 22)
@@ -167,6 +204,7 @@ function ModeSelectScene:render()
 			 280, 40, 360, "left")
 	end
 	if type(self.mode_highscore) == "table" then
+		love.graphics.printf("num", 280, 100, 100)
 		for name, idx in pairs(self.highscore_index) do
 			local column_x = self.highscore_column_positions[idx]
 			local column_w = self.highscore_column_widths[name]
@@ -175,14 +213,22 @@ function ModeSelectScene:render()
 			love.graphics.line(-5 + column_x, 100, -5 + column_x, 320)
 		end
 		for key, slot in pairs(self.mode_highscore) do
-			if key == 11 then
-				break
+			self.interpolated_menu_slot_positions[key] = interpolateNumber(self.interpolated_menu_slot_positions[key], self.menu_slot_positions[key])
+			local slot_y = self.interpolated_menu_slot_positions[key]
+			if slot_y < 220 then
+				local text_alpha = fadeoutAtEdges(-100 + slot_y, 100, 20)
+				love.graphics.setColor(1, 1, 1, text_alpha)
+				love.graphics.printf(tostring(key), 280, 100 + slot_y, 30, "left")
+				for name, value in pairs(slot) do
+					local idx = self.highscore_index[name]
+					local formatted_string = toFormattedValue(value)
+					local column_x = self.highscore_column_positions[idx]
+					drawWrappingText(tostring(formatted_string), column_x, 100 + slot_y, self.highscore_column_widths[name], "left")
+				end
 			end
-			for name, value in pairs(slot) do
-				local idx = self.highscore_index[name]
-				local formatted_string = toFormattedValue(value)
-				love.graphics.printf(tostring(formatted_string), self.highscore_column_positions[idx], 100 + 20 * key, self.highscore_column_widths[name], "left")
-			end
+		end
+		if type(self.key_id) == "number" then
+			love.graphics.printf(self.key_sort_string, -10 + self.highscore_column_positions[self.key_id], 100, 90)
 		end
 	end
 
@@ -276,10 +322,71 @@ function ModeSelectScene:render()
 		love.graphics.setColor(1, 1, 1, 1)
 		love.graphics.printf("This mode overrides the chosen ruleset!", 0, 440, 640, "center")
 	end
-	if self.reload_time_remaining and self.reload_time_remaining > 0 then
-		love.graphics.setColor(1, 1, 1, self.reload_time_remaining / 60)
-		love.graphics.printf("Modules reloaded!", 0, 10, 640, "center")
-		self.reload_time_remaining = self.reload_time_remaining - 1
+	local sequencing_start_frames = self.sequencing_start_frames
+	if sequencing_start_frames > 0 then
+		love.graphics.setColor(1, 1, 1, 1)
+		love.graphics.printf("Secret sequence: " .. self:getSequenceShorthand(), 10, -95 + sequencing_start_frames * 5, 620, "left")
+	end
+	local function drawStateOppositePositionFromTagline(timer, string, decay_time)
+		if timer then
+			love.graphics.setColor(1, 1, 1, 1 - timer / decay_time)
+			love.graphics.printf(string, 0, 10, 640, "center")
+		end
+	end
+	drawStateOppositePositionFromTagline(60 - (self.reload_time_remaining or 0), "Modules reloaded!", 60)
+	if self.reload_time_remaining then self.reload_time_remaining = self.reload_time_remaining - 1 end
+	drawStateOppositePositionFromTagline(self.input_timers["reload"], "Keep holding Generic 1 to reload modules...", 60)
+	drawStateOppositePositionFromTagline(self.input_timers["secret_sequencing"], "Keep holding Generic 2 to input secret sequences...", 40)
+	drawStateOppositePositionFromTagline(self.input_timers["stop_sequencing"], "Keep holding to stop sequencing...", 40)
+	love.graphics.setColor(1, 1, 1, 1)
+end
+
+local INPUT_SHORTHANDS = {
+	left = "<-",
+	right = "->",
+	up = "^",
+	down = "v",
+	rotate_left = "L1",
+	rotate_left2 = "L2",
+	rotate_right = "R1",
+	rotate_right2 = "R2",
+	rotate_180 = "180",
+	hold = "H",
+	generic_1 = "G1",
+	generic_2 = "G2",
+	generic_3 = "G3",
+	generic_4 = "G4",
+}
+function ModeSelectScene:getSequenceShorthand()
+	local shorthands = {}
+	for index, value in ipairs(self.secret_sequence) do
+		if INPUT_SHORTHANDS[value] then
+			table.insert(shorthands, INPUT_SHORTHANDS[value])
+		else
+			table.insert(shorthands, value)
+		end
+	end
+	return table.concat(shorthands, " ")
+end
+
+function ModeSelectScene:injectSecretSequenceOnMatch(mode)
+	if type(mode.sequences) == "table" then
+		for name, sequence in pairs(mode.sequences) do
+			if type(sequence) == "table" then
+				local matches_required = #sequence
+				local matches_found = 0
+				for k2, v2 in pairs(self.secret_sequence) do
+					if sequence[matches_found+1] == v2 then
+						matches_found = matches_found + 1
+					elseif matches_found < matches_required then
+						matches_found = sequence[1] == v2 and 1 or 0
+					end
+				end
+				if matches_found >= matches_required then
+					self.secret_inputs[name] = true
+				end
+			end
+		end
 	end
 end
 
@@ -310,6 +417,7 @@ function ModeSelectScene:startMode()
 	config.current_ruleset = current_ruleset
 	config.current_folder_selections = current_folder_selections
 	saveConfig()
+	self:injectSecretSequenceOnMatch(self.game_mode_folder[self.menu_state.mode])
 	scene = GameScene(
 		self.game_mode_folder[self.menu_state.mode],
 		self.ruleset_folder[self.menu_state.ruleset],
@@ -362,18 +470,22 @@ function ModeSelectScene:exitScene()
 	scene = TitleScene()
 end
 
+local SYSTEM_INPUTS = {
+	menu_decide = true,
+	menu_back = true,
+	menu_left = true,
+	menu_right = true,
+	menu_up = true,
+	menu_down = true,
+	mode_exit = true,
+	retry = true,
+	pause = true,
+	frame_step = true,
+}
+
 function ModeSelectScene:onInputPress(e)
 	if self.safety_frames > 0 then
 		return
-	end
-	if e.scancode == "lctrl" or e.scancode == "rctrl" then
-		self.ctrl_held = true
-	end
-	if e.scancode == "r" and self.ctrl_held then
-		unloadModules()
-		scene = ModeSelectScene()
-		scene.reload_time_remaining = 90
-		playSE("ihs")
 	end
 	if (e.input or e.scancode) and (self.display_warning or #self.game_mode_folder == 0 or #self.ruleset_folder == 0) then
 		if self.display_warning then
@@ -383,6 +495,8 @@ function ModeSelectScene:onInputPress(e)
 		else
 			self:menuGoBack("ruleset")
 		end
+	elseif self.is_sequencing and e.type ~= "wheel" then
+		self.input_timers["stop_sequencing"] = 60
 	elseif e.input == "menu_back" then
 		local has_started = self.starting
 		if self.starting then
@@ -448,7 +562,7 @@ function ModeSelectScene:onInputPress(e)
 			end
 		end
 	elseif self.starting then return
-	elseif e.type == "wheel" then
+	elseif e.type == "wheel" and not self.is_sequencing then
 		if #self.ruleset_folder == 0 or #self.game_mode_folder == 0 then
 			return
 		end
@@ -475,11 +589,26 @@ function ModeSelectScene:onInputPress(e)
 	elseif e.input then
 		self.secret_inputs[e.input] = true
 	end
+	if not self.is_sequencing then
+		if e.input == "generic_1" then
+			self.input_timers["reload"] = 60
+		elseif e.input == "generic_2" then
+			self.input_timers["secret_sequencing"] = 60
+		end
+	end
 end
 
 function ModeSelectScene:onInputRelease(e)
-	if e.scancode == "lctrl" or e.scancode == "rctrl" then
-		self.ctrl_held = false
+	if self.is_sequencing then
+		self.input_timers["stop_sequencing"] = nil
+		if not self.first_input and not SYSTEM_INPUTS[e.input] then
+			table.insert(self.secret_sequence, e.input)
+		end
+		self.first_input = false
+	elseif e.input == "generic_1" then
+		self.input_timers["reload"] = nil
+	elseif e.input == "generic_2" then
+		self.input_timers["secret_sequencing"] = nil
 	end
 	if e.input == "menu_up" then
 		self.das_up = nil
@@ -508,20 +637,71 @@ function ModeSelectScene:getHighscoreConditions()
 end
 
 function ModeSelectScene:refreshHighscores()
+	self.auto_sort_clock = 0
 	if not self:getHighscoreConditions() then
 		self.mode_highscore = nil
 		return
 	end
 	local hash = self.game_mode_folder[self.menu_state.mode].hash .. "-"
 	if self.game_mode_folder[self.menu_state.mode].ruleset_override then
-		hash = hash .. self.game_mode_folder[self.menu_state.mode].ruleset_override
+		hash = hash .. tostring(self.game_mode_folder[self.menu_state.mode].ruleset_override)
 	else
 		hash = hash .. self.ruleset_folder[self.menu_state.ruleset].hash
 	end
+	local prev_highscores = self.mode_highscore
 	self.mode_highscore = highscores[hash]
-	self.highscore_index = HighscoresScene.getHighscoreIndexing(hash)
+	if type(self.mode_highscore) ~= "table" then
+		return
+	end
+	self.sorted_highscores = {}
+	self.highscore_index, self.index_count = HighscoresScene.getHighscoreIndexing(hash)
+	self.id_to_key = {}
+	for k, v in next, self.highscore_index do
+		self.id_to_key[v] = k
+	end
 	self.highscore_column_widths = HighscoresScene.getHighscoreColumnWidths(hash, font_3x5_2)
-	self.highscore_column_positions = HighscoresScene.getHighscoreColumnPositions(self.highscore_column_widths, self.highscore_index, 280)
+	self.highscore_column_positions = HighscoresScene.getHighscoreColumnPositions(self.highscore_column_widths, self.highscore_index, 320)
+	if self.mode_highscore ~= prev_highscores then
+		self.key_id = 1
+		self.sort_type = ""
+		self.key_sort_string = ""
+		for key, slot in pairs(self.mode_highscore) do
+			self.menu_slot_positions[key] = key * 20
+			self.interpolated_menu_slot_positions[key] = 0
+		end
+	end
+end
+
+function ModeSelectScene:autoSortHighscores()
+	if self.sort_type == "" then
+		self.key_id = self.index_count
+	end
+	if self.key_id + 1 > self.index_count then
+		self.sort_type = self.sort_type == "<" and ">" or self.sort_type == ">" and "" or "<"
+		self.key_sort_string = self.sort_type == "<" and "v" or self.sort_type == ">" and "^" or ""
+	end
+	self.key_id = Mod1(self.key_id + 1, self.index_count)
+	self:sortHighscoresByKey(self.id_to_key[self.key_id])
+end
+
+function ModeSelectScene:sortHighscoresByKey(key)
+	local table_content = {}
+	for k, v in pairs(self.mode_highscore) do
+		table_content[k] = {id = k, value = v}
+	end
+	local function padnum(d) return ("%03d%s"):format(#d, d) end
+	if self.sort_type ~= "" then
+		table.sort(table_content, function (a, b)
+			if self.sort_type == ">" then
+				return tostring(a.value[key]):gsub("%d+",padnum) < tostring(b.value[key]):gsub("%d+",padnum)
+			else
+				return tostring(a.value[key]):gsub("%d+",padnum) > tostring(b.value[key]):gsub("%d+",padnum)
+			end
+		end)
+	end
+	for k, v in pairs(table_content) do
+		self.menu_slot_positions[v.id] = k * 20
+	end
 end
 
 function ModeSelectScene:changeMode(rel)
@@ -530,6 +710,7 @@ function ModeSelectScene:changeMode(rel)
 	playSE("cursor")
 	self.menu_state.mode = Mod1(self.menu_state.mode + rel, len)
 	self:refreshHighscores()
+	self.secret_sequence = {}
 end
 
 function ModeSelectScene:changeRuleset(rel)

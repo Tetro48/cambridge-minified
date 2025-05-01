@@ -3,8 +3,13 @@
 random = love.math.random
 math.random = love.math.random
 math.randomseed = love.math.setRandomSeed
+local GLOBAL_STATE = "INIT"
 
-function love.load()
+-- This translates and scales the screen into specified dimensions.
+---@type function
+local scaleToResolution
+
+function love.load(args)
 	love.graphics.setDefaultFilter("linear", "nearest")
 	require "load.fonts"
 	love.graphics.setFont(font_3x5_4)
@@ -16,6 +21,7 @@ function love.load()
 	require "load.filesystem"
 	require "load.rpc"
 	require "load.graphics"
+	require "load.resources"
 	require "load.sounds"
 	require "load.bgm"
 	require "load.save"
@@ -27,6 +33,10 @@ function love.load()
 	require "funcs"
 	require "scene"
 	
+	if table.contains(args, "--tempIdentity") then
+		love.filesystem.setIdentity(love.filesystem.getIdentity() .. "-temp")
+		saveConfig()
+	end
 	--config["side_next"] = false
 	--config["reverse_rotate"] = true
 	--config["das_last_key"] = false
@@ -52,6 +62,15 @@ function love.load()
 	if config.secret then playSE("welcome") end
 end
 
+function scaleToResolution(width, height)
+	local screen_width, screen_height = love.graphics.getDimensions()
+	local scale_factor = math.min(screen_width / width, screen_height / height)
+	love.graphics.translate(
+		(screen_width - scale_factor * width) / 2,
+		(screen_height - scale_factor * height) / 2
+	)
+	love.graphics.scale(scale_factor)
+end
 
 mouse_idle = 0
 TAS_mode = false
@@ -68,11 +87,11 @@ end
 ---@param a number
 function drawT48Cursor(x, y, a)
 	if a <= 0 then return end
-    love.graphics.setColor(1,1,1,a)
-    love.graphics.polygon("fill", x + 5, y + 0, x + 0, y + 10, x + 5, y + 8, x + 8, y + 20, x + 12, y + 18, x + 10, y + 7, x + 15, y + 5)
-    love.graphics.setColor(0,0,0,a)
-    love.graphics.polygon("line", x + 5, y + 0, x + 0, y + 10, x + 5, y + 8, x + 8, y + 20, x + 12, y + 18, x + 10, y + 7, x + 15, y + 5)
-    love.graphics.setColor(1,1,1,a)
+	love.graphics.setColor(1,1,1,a)
+	love.graphics.polygon("fill", x + 5, y + 0, x + 0, y + 10, x + 5, y + 8, x + 8, y + 20, x + 12, y + 18, x + 10, y + 7, x + 15, y + 5)
+	love.graphics.setColor(0,0,0,a)
+	love.graphics.polygon("line", x + 5, y + 0, x + 0, y + 10, x + 5, y + 8, x + 8, y + 20, x + 12, y + 18, x + 10, y + 7, x + 15, y + 5)
+	love.graphics.setColor(1,1,1,a)
 end
 
 ---@param image love.ImageData
@@ -81,11 +100,15 @@ local function screenshotFunction(image)
 	screenshot_images[#screenshot_images+1] = {image = love.graphics.newImage(image), time = 0, y_position = #screenshot_images * 260}
 end
 
-local last_time = 0
-local function getDeltaTime()
+local last_render_time = 0
+local render_dt = 0
+--- Measures the time between two frames.
+--- Calling this changes getDeltaTime() on the render side.
+local function stepRenderTime()
 	local time = love.timer.getTime()
-	local dt = time - last_time
-	last_time = time
+	local dt = time - last_render_time
+	render_dt = dt
+	last_render_time = time
 	return dt
 end
 local time_table = {}
@@ -104,6 +127,15 @@ local function getAvgDelta()
 		last_fps = acc / #time_table
 	end
 	return last_fps
+end
+
+-- This gets different deltas depending on what part is in, whether it's in update, or render.
+function getDeltaTime()
+	if GLOBAL_STATE == "RENDER" then
+		return render_dt
+	else
+		return love.timer.getDelta()
+	end
 end
 
 --What a mess trying to do something with it
@@ -300,14 +332,7 @@ function love.draw()
 	love.graphics.push()
 
 	-- get offset matrix
-	local width = love.graphics.getWidth()
-	local height = love.graphics.getHeight()
-	local scale_factor = math.min(width / 640, height / 480)
-	love.graphics.translate(
-		(width - scale_factor * 640) / 2,
-		(height - scale_factor * 480) / 2
-	)
-	love.graphics.scale(scale_factor)
+	scaleToResolution(640, 480)
 		
 	scene:render()
 
@@ -332,7 +357,7 @@ function love.draw()
 	if config.visualsettings.debug_level > 1 then
 		bottom_right_corner_y_offset = bottom_right_corner_y_offset + 18
 		love.graphics.printf(
-			string.format("Lua memory use: %.1fKB", collectgarbage("count")),
+			string.format("Lua memory use: %.1fMB", collectgarbage("count")/1000),
 			0, 480 - bottom_right_corner_y_offset, 635, "right"
 		)
 	end
@@ -345,18 +370,17 @@ function love.draw()
 			drawT48Cursor(lx, ly, 9 - mouse_idle * 4)
 		end
 	end
+
+	if string.sub(love.filesystem.getIdentity(), -5) == "-temp" then
+		love.graphics.printf("TEMPORARY IDENTITY MODE", font_8x11_small, 0, 0, 640, "center")
+	end
 	
 	love.graphics.pop()
 		
 	love.graphics.setCanvas()
 	love.graphics.setColor(1,1,1,1)
 	love.graphics.draw(GLOBAL_CANVAS)
-	
-	love.graphics.translate(
-		(width - scale_factor * 640) / 2,
-		(height - scale_factor * 480) / 2
-	)
-	love.graphics.scale(scale_factor)
+	scaleToResolution(640, 480)
 	drawScreenshotPreviews()
 	love.graphics.setColor(1, 1, 1, 1)
 	if config.visualsettings.debug_level > 2 then
@@ -367,6 +391,53 @@ function love.draw()
 			0, 480 - bottom_right_corner_y_offset, 635, "right"
 		)
 	end
+end
+
+local function onInputPress(e)
+	if scene.title == "Key Config" or scene.title == "Stick Config" then
+		scene:onInputPress(e)
+	elseif e.input == "fullscreen" then
+		config["fullscreen"] = not config["fullscreen"]
+		saveConfig()
+		love.window.setFullscreen(config["fullscreen"])
+	elseif e.input == "tas_mode" then
+		TAS_mode = not TAS_mode
+		return
+	elseif e.input == "configure_inputs" and scene.title ~= "Input Config" and scene.title ~= "Game" and scene.title ~= "Replay" then
+		scene = InputConfigScene()
+		switchBGM(nil)
+		loadSave()
+	-- load state tool
+	elseif e.input == "save_state" and TAS_mode and (scene.title == "Replay") then
+		scene:onInputPress({input="save_state"})
+	elseif e.input == "load_state" and TAS_mode and (scene.title == "Replay") then
+		scene:onInputPress({input="load_state"})
+	-- secret sound playing :eyes:
+	elseif e.input == "secret" and scene.title == "Title" then
+		config.secret = not config.secret
+		saveConfig()
+		scene.restart_message = true
+		if config.secret then playSE("mode_decide")
+		else playSE("erase", "single") end
+	elseif e.input == "screenshot" then
+		local ss_name = os.date("ss/%Y-%m-%d_%H-%M-%S.png")
+		local info = love.filesystem.getInfo("ss", "directory")
+		if not info then
+			love.filesystem.remove("ss")
+			love.filesystem.createDirectory("ss")
+		end
+		print("Saving screenshot as "..love.filesystem.getSaveDirectory().."/"..ss_name)
+		local image = GLOBAL_CANVAS:newImageData()
+		image:encode("png", ss_name)
+		screenshotFunction(image)
+		image:release()
+	else
+		scene:onInputPress(e)
+	end
+end
+
+local function onInputRelease(e)
+	scene:onInputRelease(e)
 end
 
 local function multipleInputs(input_table, input)
@@ -411,35 +482,24 @@ function love.filedropped(file)
 			final_directory = "replays/"
 		elseif msgbox_choice == 2 then
 			local replay_data = binser.d(data)[1]
-			local info_string = "Replay file view:\n"
-			info_string = info_string .. "Mode: " .. replay_data["mode"] .. " (" .. (replay_data["mode_hash"] or "???") .. ")\n"
-			info_string = info_string .. "Ruleset: " .. replay_data["ruleset"] .. " (" .. (replay_data["ruleset_hash"] or "???") .. ")\n"
-			info_string = info_string .. os.date("Timestamp: %c\n", replay_data["timestamp"])
-			if replay_data.cambridge_version then
-				if replay_data.cambridge_version ~= version then
-					info_string = info_string .. "Warning! The versions don't match!\nStuff may break, so, start at your own risk.\n"
-				end
-				info_string = info_string .. "Cambridge version for this replay: "..replay_data.cambridge_version.."\n"
-			end
-			if replay_data.pause_count and replay_data.pause_time then
-				info_string = info_string .. ("Pause count: %d\nTime Paused: %s\n"):format(replay_data.pause_count, formatTime(replay_data.pause_time))
-			end
-			if replay_data.sha256_table then
-				info_string = info_string .. ("SHA256 replay hashes:\nMode: %s\nRuleset: %s\n"):format(replay_data.sha256_table.mode, replay_data.sha256_table.ruleset)
-			end
-			if replay_data.highscore_data then
-				info_string = info_string .. "In-replay highscore data:\n\n"
-				for key, value in pairs(replay_data["highscore_data"]) do
-					info_string = info_string .. stringWrapByLength((key..": ".. toFormattedValue(value)), 75) .. "\n"
-				end
-			else
-				info_string = info_string .. "Legacy replay\nLevel: "..replay_data["level"]
-			end
-			love.window.showMessageBox(love.window.getTitle(), info_string, "info")
+			displayReplayInfoBox(replay_data)
 			return
 		end
+	elseif raw_file_directory:sub(-4) == ".zip" then
+		msgbox_choice = love.window.showMessageBox(love.window.getTitle(),
+		"What option do you select for "..filename.."?\n"..
+		"Directory: Treat the zip archive as directory\n"..
+		"Res. Packs: Add the zip file to resource packs folder\n\nPress ESC to abort.", {"Directory", "Res. Packs", escapebutton = 0}, "info")
+		if msgbox_choice == 0 then
+			return
+		end
+		if msgbox_choice == 1 then
+			return love.directorydropped(raw_file_directory)
+		elseif msgbox_choice == 2 then
+			final_directory = "resourcepacks/"
+		end
 	else
-		love.window.showMessageBox(love.window.getTitle(), "This file ("..filename..") is not a Lua nor replay file.", "warning")
+		love.window.showMessageBox(love.window.getTitle(), "This file ("..filename..") is not one of these file types: .lua, .crp, .zip", "warning")
 		return
 	end
 	local do_write = 2
@@ -450,12 +510,14 @@ function love.filedropped(file)
 	if do_write == 2 then
 		love.filesystem.createDirectory(final_directory)
 		love.filesystem.write(final_directory..filename, data)
-		if final_directory ~= "replays/" then
-			loaded_replays = false
-		elseif loaded_replays then
-			local replay = binser.deserialize(data)[1]
-			insertReplay(replay)
-			sortReplays()
+		if loaded_replays then
+			if final_directory == "replays/" then
+				local replay = binser.deserialize(data)[1]
+				insertReplay(replay)
+				sortReplays()
+			else
+				refreshReplayTree()
+			end
 		end
 	end
 end
@@ -467,9 +529,7 @@ function love.directorydropped(dir)
 		return
 	end
 	local success = love.filesystem.mount(dir, "directory_dropped")
-	if not success then
-		error("Unsuccessful mount on "..dir.."!")
-	end
+	assert(success, "Unsuccessful mount on "..dir.."!")
 	copyDirectoryRecursively("directory_dropped", "", true)
 	love.filesystem.unmount(dir)
 end
@@ -477,90 +537,34 @@ end
 ---@param key string|nil
 ---@param scancode string|nil
 function love.keypressed(key, scancode)
-	-- global hotkeys
-	if scancode == "f11" then
-		config["fullscreen"] = not config["fullscreen"]
-		saveConfig()
-		love.window.setFullscreen(config["fullscreen"])
-	elseif scancode == "f1" then
-		TAS_mode = not TAS_mode
-	elseif scancode == "f2" and scene.title ~= "Input Config" and scene.title ~= "Game" and scene.title ~= "Replay" then
-		scene = InputConfigScene()
-		switchBGM(nil)
-		loadSave()
-	elseif scancode == "f3" then
-		print("The old way of framestepping is deprecated!")
-	-- load state tool
-	elseif scancode == "f4" and TAS_mode and (scene.title == "Replay") then
-		scene:onInputPress({input="save_state"})
-	elseif scancode == "f5" and TAS_mode and (scene.title == "Replay") then
-		scene:onInputPress({input="load_state"})
-	-- secret sound playing :eyes:
-	elseif scancode == "f8" and scene.title == "Title" then
-		config.secret = not config.secret
-		saveConfig()
-		scene.restart_message = true
-		if config.secret then playSE("mode_decide")
-		else playSE("erase", "single") end
-	-- f12 is reserved for saving screenshots
-	elseif scancode == "f12" then
-		local ss_name = os.date("ss/%Y-%m-%d_%H-%M-%S.png")
-		local info = love.filesystem.getInfo("ss", "directory")
-		if not info then
-			love.filesystem.remove("ss")
-			love.filesystem.createDirectory("ss")
+	local result_inputs = {}
+	if config.input and config.input.keys then
+		result_inputs = multipleInputs(config.input.keys, scancode)
+		for _, input in pairs(result_inputs) do
+			onInputPress({input=input, type="key", key=key, scancode=scancode})
+			key = nil
+			scancode = nil
 		end
-		print("Saving screenshot as "..love.filesystem.getSaveDirectory().."/"..ss_name)
-		local image = GLOBAL_CANVAS:newImageData()
-		image:encode("png", ss_name)
-		screenshotFunction(image)
-		image:release()
-	-- function keys are reserved
-	elseif string.match(scancode, "^f[1-9]$") or string.match(scancode, "^f[1-9][0-9]+$") then
-		return	
-	-- escape is reserved for menu_back except in modes
-	elseif scancode == "escape" and not scene.game then
-		scene:onInputPress({input="menu_back", type="key", key=key, scancode=scancode})
-	-- pass any other key to the scene, with its configured mapping
-	else
-		local result_inputs = {}
-		if config.input and config.input.keys then
-			result_inputs = multipleInputs(config.input.keys, scancode)
-			for _, input in pairs(result_inputs) do
-				scene:onInputPress({input=input, type="key", key=key, scancode=scancode})
-				key = nil
-				scancode = nil
-			end
-		end
-		if #result_inputs == 0 then
-			scene:onInputPress({type="key", key=key, scancode=scancode})
-		end
+	end
+	if #result_inputs == 0 then
+		onInputPress({type="key", key=key, scancode=scancode})
 	end
 end
 
 ---@param key string|nil
 ---@param scancode string|nil
 function love.keyreleased(key, scancode)
-	-- escape is reserved for menu_back
-	if scancode == "escape" then
-		scene:onInputRelease({input="menu_back", type="key", key=key, scancode=scancode})
-	-- function keys are reserved
-	elseif string.match(scancode, "^f[1-9]$") or string.match(scancode, "^f[1-9][0-9]+$") then
-		return	
-	-- handle all other keys; tab is reserved, but the input config scene keeps it from getting configured as a game input, so pass tab to the scene here
-	else
-		local result_inputs = {}
-		if config.input and config.input.keys then
-			result_inputs = multipleInputs(config.input.keys, scancode)
-			for _, input in pairs(result_inputs) do
-				scene:onInputRelease({input=input, type="key", key=key, scancode=scancode})
-				key = nil
-				scancode = nil
-			end
+	local result_inputs = {}
+	if config.input and config.input.keys then
+		result_inputs = multipleInputs(config.input.keys, scancode)
+		for _, input in pairs(result_inputs) do
+			onInputRelease({input=input, type="key", key=key, scancode=scancode})
+			key = nil
+			scancode = nil
 		end
-		if #result_inputs == 0 then
-			scene:onInputRelease({type="key", key=key, scancode=scancode})
-		end
+	end
+	if #result_inputs == 0 then
+		onInputRelease({type="key", key=key, scancode=scancode})
 	end
 end
 
@@ -573,13 +577,12 @@ function love.joystickpressed(joystick, button)
 			result_inputs = multipleInputs(config.input.joysticks[joystick:getName()], "buttons-"..button)
 		end
 		for _, input in pairs(result_inputs) do
-			scene:onInputPress({input=input, type="joybutton", name=joystick:getName(), button=button})
+			onInputPress({input=input, type="joybutton", name=joystick:getName(), button=button})
 		end
 	end
 	if #result_inputs == 0 then
-		scene:onInputPress({type="joybutton", name=joystick:getName(), button=button})
+		onInputPress({type="joybutton", name=joystick:getName(), button=button})
 	end
-	-- scene:onInputPress({input=input_pressed, type="joybutton", name=joystick:getName(), button=button})
 end
 
 ---@param joystick love.Joystick
@@ -591,11 +594,11 @@ function love.joystickreleased(joystick, button)
 			result_inputs = multipleInputs(config.input.joysticks[joystick:getName()], "buttons-"..button)
 		end
 		for _, input in pairs(result_inputs) do
-			scene:onInputRelease({input=input, type="joybutton", name=joystick:getName(), button=button})
+			onInputRelease({input=input, type="joybutton", name=joystick:getName(), button=button})
 		end
 	end
 	if #result_inputs == 0 then
-		scene:onInputRelease({type="joybutton", name=joystick:getName(), button=button})
+		onInputRelease({type="joybutton", name=joystick:getName(), button=button})
 	end
 end
 
@@ -613,16 +616,15 @@ function love.joystickaxis(joystick, axis, value)
 		if type(joystick_input_table) == "table" then
 			result_inputs = multipleInputs(joystick_input_table, "axes-"..axis.."-"..(value >= 1 and "positive" or "negative"))
 			for _, input in pairs(result_inputs) do
-				scene:onInputPress({input=input, type="joyaxis", name=joystick:getName(), axis=axis, value=value})
+				onInputPress({input=input, type="joyaxis", name=joystick:getName(), axis=axis, value=value})
 			end
 			local opposite_direction_inputs = multipleInputs(joystick_input_table, "axes-"..axis.."-"..(value <= -1 and "positive" or "negative"))
 			for _, input in pairs(opposite_direction_inputs) do
-				scene:onInputRelease({input=input, type="joyaxis", name=joystick:getName(), axis=axis, value=value})
+				onInputRelease({input=input, type="joyaxis", name=joystick:getName(), axis=axis, value=value})
 			end
-			-- scene:onInputPress({input=input_pressed, type="joyaxis", name=joystick:getName(), axis=axis, value=value})
 		end
 		if #result_inputs == 0 then
-			scene:onInputPress({type="joyaxis", name=joystick:getName(), axis=axis, value=value})
+			onInputPress({type="joyaxis", name=joystick:getName(), axis=axis, value=value})
 		end
 	else
 		if type(joystick_input_table) == "table" then
@@ -635,11 +637,11 @@ function love.joystickaxis(joystick, axis, value)
 				end
 			end
 			for _, input in pairs(result_inputs) do
-				scene:onInputRelease({input=input, type="joyaxis", name=joystick_name, axis=axis, value=value})
+				onInputRelease({input=input, type="joyaxis", name=joystick_name, axis=axis, value=value})
 			end
 		end
 		if #result_inputs == 0 then
-			scene:onInputRelease({type="joyaxis", name=joystick_name, axis=axis, value=value})
+			onInputRelease({type="joyaxis", name=joystick_name, axis=axis, value=value})
 		end
 	end
 end
@@ -672,19 +674,13 @@ function love.joystickhat(joystick, hat, direction)
 			local char = direction:sub(i, i)
 			local _, count = last_hat_direction:gsub(char, char)
 			if count == 0 then
-				local result_inputs = {}
-				for input_type, value in pairs(config.input.joysticks[joystick:getName()]) do
-					if "hat-"..hat.."-"..directions[char] == value then
-						table.insert(result_inputs, input_type)
-					end
-				end
+				local result_inputs = multipleInputs(config.input.joysticks[joystick:getName()], "hat-"..hat.."-"..char)
 				for _, input in pairs(result_inputs) do
-					scene:onInputPress({input=input, type="joyhat", name=joystick:getName(), hat=hat, direction=char})
+					onInputPress({input=input, type="joyhat", name=joystick:getName(), hat=hat, direction=char})
 				end
 				if #result_inputs == 0 then
-					scene:onInputPress({input=directions[char], type="joyhat", name=joystick:getName(), hat=hat, direction=char})
+					onInputPress({input=directions[char], type="joyhat", name=joystick:getName(), hat=hat, direction=char})
 				end
-				--scene:onInputPress({input=config.input.joysticks[joystick:getName()].hats[hat][char], type="joyhat", name=joystick:getName(), hat=hat, direction=char})
 			end
 		end
 		for i = 1, #last_hat_direction do
@@ -698,26 +694,24 @@ function love.joystickhat(joystick, hat, direction)
 					end
 				end
 				for _, input in pairs(result_inputs) do
-					scene:onInputRelease({input=input, type="joyhat", name=joystick:getName(), hat=hat, direction=char})
+					onInputRelease({input=input, type="joyhat", name=joystick:getName(), hat=hat, direction=char})
 				end
 				if #result_inputs == 0 then
-					scene:onInputRelease({input=directions[char], type="joyhat", name=joystick:getName(), hat=hat, direction=char})
+					onInputRelease({input=directions[char], type="joyhat", name=joystick:getName(), hat=hat, direction=char})
 				end
-				-- scene:onInputRelease({input=config.input.joysticks[joystick:getName()].hats[hat][char], type="joyhat", name=joystick:getName(), hat=hat, direction=char})
 			end
 		end
 		last_hat_direction = direction
 	elseif has_hat then
 		--why redefine the local variable?
 		for i, fdirection in ipairs{"d", "l", "ld", "lu", "r", "rd", "ru", "u"} do
-			local result_inputs = multipleInputs(config.input.joysticks[joystick:getName()], "hat-"..hat.."-"..(directions[fdirection] or "nil"))
+			local result_inputs = multipleInputs(config.input.joysticks[joystick:getName()], "hat-"..hat.."-"..fdirection)
 			for _, input in pairs(result_inputs) do
-				scene:onInputRelease({input=input, type="joyhat", name=joystick:getName(), hat=hat, direction=fdirection})
+				onInputRelease({input=input, type="joyhat", name=joystick:getName(), hat=hat, direction=fdirection})
 			end
 			if #result_inputs == 0 then
-				scene:onInputRelease({input=directions[fdirection] or nil, type="joyhat", name=joystick:getName(), hat=hat, direction=fdirection})
+				onInputRelease({input=directions[fdirection] or nil, type="joyhat", name=joystick:getName(), hat=hat, direction=fdirection})
 			end
-			-- scene:onInputRelease({input=config.input.joysticks[joystick:getName()].hats[hat][direction], type="joyhat", name=joystick:getName(), hat=hat, direction=direction})
 		end
 		last_hat_direction = ""
 	elseif direction ~= "c" then
@@ -725,20 +719,20 @@ function love.joystickhat(joystick, hat, direction)
 			local char = direction:sub(i, i)
 			local _, count = last_hat_direction:gsub(char, char)
 			if count == 0 then
-				scene:onInputPress({input=directions[char], type="joyhat", name=joystick:getName(), hat=hat, direction=char})
+				onInputPress({input=directions[char], type="joyhat", name=joystick:getName(), hat=hat, direction=char})
 			end
 		end
 		for i = 1, #last_hat_direction do
 			local char = last_hat_direction:sub(i, i)
 			local _, count = direction:gsub(char, char)
 			if count == 0 then
-				scene:onInputRelease({input=directions[char], type="joyhat", name=joystick:getName(), hat=hat, direction=char})
+				onInputRelease({input=directions[char], type="joyhat", name=joystick:getName(), hat=hat, direction=char})
 			end
 		end
 		last_hat_direction = direction
 	else
 		for i, fdirection in ipairs{"d", "l", "ld", "lu", "r", "rd", "ru", "u"} do
-			scene:onInputRelease({input=directions[fdirection], type="joyhat", name=joystick:getName(), hat=hat, direction=fdirection})
+			onInputRelease({input=directions[fdirection], type="joyhat", name=joystick:getName(), hat=hat, direction=fdirection})
 		end
 		last_hat_direction = ""
 	end
@@ -858,6 +852,18 @@ function getTargetFPS()
 	return TARGET_FPS
 end
 
+local function recursivelyDelete( item )
+	if love.filesystem.getInfo( item , "directory" ) then
+		for _, child in ipairs( love.filesystem.getDirectoryItems( item )) do
+			recursivelyDelete( item .. '/' .. child )
+			love.filesystem.remove( item .. '/' .. child )
+		end
+	elseif love.filesystem.getInfo( item ) then
+		love.filesystem.remove( item )
+	end
+	love.filesystem.remove( item )
+end
+
 -- custom run function; optimizes game by syncing draw/update calls
 function love.run()
 	if love.load then love.load(love.arg.parseGameArguments(arg), arg) end
@@ -875,6 +881,9 @@ function love.run()
 				if name == "quit" then
 					if not love.quit or not love.quit() then
 						if disposeReplayThread then disposeReplayThread() end
+						if string.sub(love.filesystem.getIdentity(), -5) == "-temp" then
+							recursivelyDelete('')
+						end
 						return a or 0
 					end
 				end
@@ -887,9 +896,12 @@ function love.run()
 		end
 		
 		if scene and scene.update and love.timer then
+			GLOBAL_STATE = "UPDATE"
 			scene:update()
 			if time_accumulator < FRAME_DURATION or TARGET_FPS == math.huge then
+				stepRenderTime()
 				if love.graphics and love.graphics.isActive() and love.draw then
+					GLOBAL_STATE = "RENDER"
 					love.graphics.origin()
 					love.graphics.clear(love.graphics.getBackgroundColor())
 					love.draw()
@@ -929,6 +941,10 @@ function love.run()
 			local real_frame_duration = finish_delay_time - last_time
 			time_accumulator = time_accumulator + real_frame_duration - FRAME_DURATION
 			last_time = finish_delay_time
+
+			if time_accumulator > 0.2 + FRAME_DURATION then
+				time_accumulator = 0
+			end
 		end
 	end
 end

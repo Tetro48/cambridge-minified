@@ -12,11 +12,10 @@ local current_replay = 1
 local loading_replays
 
 function ReplaySelectScene:new()
-	-- fully reload custom modules
-	unloadModules()
-	initModules()
+	-- fully refresh custom modules
 
 	self.safety_frames = 0
+	self.frames_since_error = 0
 
 	self.replay_count = #(love.filesystem.getDirectoryItems("replays"))
 	if not loaded_replays and not loading_replays then
@@ -26,6 +25,8 @@ function ReplaySelectScene:new()
 		self.state_string = ""
 		return
 	end
+	unloadModules()
+	initModules()
 	self.display_error = false
 	if #replays == 0 then
 		self.display_warning = true
@@ -43,48 +44,16 @@ function ReplaySelectScene:new()
 	self.auto_menu_offset = 0
 end
 
-function insertReplay(replay)
-	for key, value in pairs(replay) do
-		replay[key] = toFormattedValue(value)
-	end
-	if replay.highscore_data then
-		for key, value in pairs(replay.highscore_data) do
-			replay.highscore_data[key] = toFormattedValue(value)
-		end
-	end
-	local mode_name = replay.mode
-	replays[#replays+1] = replay
-	if dict_ref[mode_name] ~= nil and mode_name ~= "znil" then
-		table.insert(replay_tree[dict_ref[mode_name] ], #replays)
-	end
-	local branch_index = 0
-	for index, value in ipairs(replay_tree) do
-		if value.name == "All" then
-			branch_index = index
-			break
-		end
-	end
-	table.insert(replay_tree[branch_index], #replays)
-end
-function sortReplays()
-	if not replay_tree then return end
-	local function padnum(d) return ("%03d%s"):format(#d, d) end
-	table.sort(replay_tree, function(a,b)
-	return tostring(a.name):gsub("%d+",padnum) < tostring(b.name):gsub("%d+",padnum) end)
-	for key, submenu in pairs(replay_tree) do
-		table.sort(submenu, function(a, b)
-			return replays[a]["timestamp"] > replays[b]["timestamp"]
-		end)
-	end
-end
-
 function ReplaySelectScene:update()
+	local last_time = love.timer.getTime()
 	self.safety_frames = self.safety_frames - 1
+	self.frames_since_error = self.frames_since_error + 1
 	if not loaded_replays then
 		self.state_string = love.thread.getChannel('load_state'):peek()
 		local replay = love.thread.getChannel('replay'):pop()
-		local load = love.thread.getChannel( 'loaded_replays' ):pop()
-		while replay do
+		local load = love.thread.getChannel( 'loaded_replays' ):peek()
+		local overtime
+		while replay and not overtime do
 			replays_loaded = replays_loaded + 1
 			local mode_name = replay.mode
 			replays[#replays+1] = replay
@@ -92,19 +61,16 @@ function ReplaySelectScene:update()
 				table.insert(replay_tree[dict_ref[mode_name] ], #replays)
 			end
 			table.insert(replay_tree[1], #replays)
-			replay = love.thread.getChannel('replay'):pop()
+			overtime = love.timer.getTime() - last_time > 0.6/getTargetFPS()
+			if not overtime then
+				replay = love.thread.getChannel('replay'):pop()
+			end
 		end
-		if load then
+		if load and replay == nil then
+			love.thread.getChannel( 'loaded_replays' ):pop()
 			loaded_replays = true
 			loading_replays = false
-			local function padnum(d) return ("%03d%s"):format(#d, d) end
-			table.sort(replay_tree, function(a,b)
-			return tostring(a.name):gsub("%d+",padnum) < tostring(b.name):gsub("%d+",padnum) end)
-			for key, submenu in pairs(replay_tree) do
-				table.sort(submenu, function(a, b)
-					return replays[a]["timestamp"] > replays[b]["timestamp"]
-				end)
-			end
+			sortReplays()
 			scene = ReplaySelectScene()
 		end
 		return -- It's there to avoid input response when loading.
@@ -124,7 +90,7 @@ function ReplaySelectScene:update()
 		if self.auto_menu_offset > 0 then self.auto_menu_offset = self.auto_menu_offset - 1 end
 		if self.auto_menu_offset < 0 then self.auto_menu_offset = self.auto_menu_offset + 1 end
 	end
-	if self.das >= 15 then
+	if self.das >= config.menu_das then
 		local change = 0
 		if self.das_up then
 			change = -1
@@ -136,7 +102,7 @@ function ReplaySelectScene:update()
 			change = 9
 		end
 		self:changeOption(change)
-		self.das = self.das - 4
+		self.das = self.das - config.menu_arr
 	end
 end
 
@@ -176,6 +142,11 @@ function ReplaySelectScene:render()
 		love.graphics.print("SELECT MODE TO REPLAY", 40, 35)
 	end
 
+	if self.refresh_time_remaining and self.refresh_time_remaining > 0 then
+		love.graphics.setColor(1, 1, 1, self.refresh_time_remaining / 60)
+		love.graphics.printf("Replay tree refreshed!", font_3x5_2, 0, 10, 640, "center")
+		self.refresh_time_remaining = self.refresh_time_remaining - 1
+	end
 	if self.display_warning then
 		love.graphics.setFont(font_3x5_3)
 		love.graphics.printf(
@@ -285,6 +256,9 @@ function ReplaySelectScene:render()
 				love.graphics.printf("Level: ".. replay["level"], 0, 100 + idx * 20, 640, "center")
 			else
 				love.graphics.setFont(font_3x5_2)
+				if self.error_msg then
+					love.graphics.setColor(0.5, 0.5, 0.5)
+				end
 				love.graphics.printf("In-replay highscore data:", 0, 100 + idx * 20, 640, "center")
 				for key, value in pairs(self.highscores_indexing) do
 					local text_content = key..": "..tostring(replay.highscore_data[key])
@@ -296,9 +270,22 @@ function ReplaySelectScene:render()
 				end
 				idx = idx + self.highscores_idx_offset[#self.highscores_idx_offset]
 			end
-			love.graphics.setFont(font_3x5_2)
-			love.graphics.printf("Enter or LMB or ".. (config.input.keys.menu_decide or "???") ..": Start\nDel or Backspace or RMB or " ..
-			(config.input.keys.menu_back or "???")..": Return\n Generic 1: Verify highscore data", 0, 140 + idx * 20, 640, "center")
+			if self.error_msg then
+				idx = idx + 0.8
+				local whiteness = -0.3 + self.frames_since_error / 30
+				love.graphics.setColor(1, whiteness, whiteness)
+				love.graphics.setFont(font_3x5_2)
+				love.graphics.printf("Replay has crashed! Error message:\n" .. self.error_msg, 0, 120 + idx * 20, 640, "center")
+				idx = idx + self.error_lines
+				
+				love.graphics.setColor(1, 1, 1)
+				love.graphics.printf("RMB or " .. (config.input.keys.menu_back or "???")..": Return", 0, 140 + idx * 20, 640, "center")
+			else
+				love.graphics.setColor(1, 1, 1)
+				love.graphics.setFont(font_3x5_2)
+				love.graphics.printf("LMB or ".. (config.input.keys.menu_decide or "???") ..": Start\nRMB or " ..
+				(config.input.keys.menu_back or "???")..": Return\n Generic 1: Verify highscore data", 0, 140 + idx * 20, 640, "center")
+			end
 		end
 	else
 		if #replay_tree[self.menu_state.submenu] == 0 then
@@ -341,7 +328,7 @@ function ReplaySelectScene:render()
 					g = 0.5
 					b = 0.8
 				end
-				if replay["toolassisted"] then
+				if replay["toolassisted"] or replay["ineligible"] then
 					g = 0
 					b = 0
 				end
@@ -420,8 +407,12 @@ function ReplaySelectScene:startReplay()
 		self.chosen_replay = true
 		self.highscores_data_comparison = nil
 		self.highscores_data_matching = nil
+		self.error_msg = nil
 		self.auto_menu_offset = 0
-		self.replay_sha_table = {mode = sha2.sha256(binser.serialize(mode)), ruleset = sha2.sha256(binser.serialize(rules))}
+		self.replay_sha_table = {
+			mode = sha2.sha256(getModuleSource(mode)),
+			ruleset = sha2.sha256(getModuleSource(rules))
+		}
 		playSE("main_decide")
 		self.das_down = nil
 		self.das_up = nil
@@ -432,23 +423,38 @@ function ReplaySelectScene:startReplay()
 		return
 	end
 
-	-- Same as mode decide
-	playSE("mode_decide")
+	if self:enterReplay(replay, mode, rules) then
+		-- Same as mode decide
+		playSE("mode_decide")
+	end
+	
+end
 
+function ReplaySelectScene:enterReplay(replay, mode, ruleset)
+	if self.error_msg then
+		return false
+	end
+	local prev_scene = scene
+	local success
+	
 	-- TODO compare replay versions to current versions for Cambridge, ruleset, and mode
-	scene = ReplayScene(
+	success, scene = pcall(ReplayScene, 
 		deepcopy(replay), --This has to be done to avoid serious glitches with it.
 		mode,
-		rules
+		ruleset
 	)
+	if not success then
+		self.frames_since_error = 0
+		self.error_msg = scene
+		local _, wrappedtext = font_3x5_2:getWrap(self.error_msg, 640)
+		self.error_lines = #wrappedtext
+		scene = prev_scene
+		playSE("error")
+	end
+	return success
 end
 
 function ReplaySelectScene:verifyHighscoreData()
-	love.graphics.clear()
-	drawBackground(0)
-	love.graphics.setFont(font_3x5_4)
-	love.graphics.printf("Please wait...\nVerifying highscore data...", 0, 160, 640, "center")
-	love.graphics.present()
 	current_submenu = self.menu_state.submenu
 	current_replay = self.menu_state.replay
 	-- Get game mode and ruleset
@@ -458,11 +464,16 @@ function ReplaySelectScene:verifyHighscoreData()
 	local rules = self.indexRulesetFromReplay(replay)
 
 	local prev_scene = scene
-	scene = ReplayScene(
-		deepcopy(replay), --This has to be done to avoid serious glitches with it.
-		mode,
-		rules
-	)
+	
+	if not self:enterReplay(replay, mode, rules) then
+		return
+	end
+
+	love.graphics.setColor(0, 0, 0, 0.5)
+	love.graphics.rectangle("fill", -9999, -9999, 19998, 19998)
+	love.graphics.setColor(1, 1, 1, 1)
+	love.graphics.printf("Please wait...\nVerifying highscore data...", font_3x5_4, 0, 160, 640, "center")
+	love.graphics.present()
 	local game_scene = scene
 	self.safety_frames = 2
 	local prev_sfx_volume = config.sfx_volume
@@ -488,6 +499,7 @@ function ReplaySelectScene:verifyHighscoreData()
 		playSE("error")
 	else
 		self.highscores_data_matching = true
+		playSE("mode_decide")
 	end
 end
 
@@ -520,6 +532,7 @@ function ReplaySelectScene:onInputPress(e)
 			self.auto_menu_offset = math.floor((e.y - 260)/20)
 			if self.auto_menu_offset == 0 or self.chosen_replay then
 				self:startReplay()
+				self.auto_menu_offset = 0
 			end
 		end
 		if e.button == 2 and self.chosen_replay then
@@ -535,6 +548,19 @@ function ReplaySelectScene:onInputPress(e)
 		if e.y ~= 0 then
 			self:changeOption(-e.y)
 		end
+	elseif e.scancode == "lctrl" or e.scancode == "rctrl" then
+		self.ctrl_held = true
+	elseif e.scancode == "r" and self.ctrl_held then
+		unloadModules()
+		initModules()
+		refreshReplayTree()
+		self.height_offset = 0
+		self.menu_state = {
+			submenu = current_submenu,
+			replay = current_replay,
+		}
+		self.refresh_time_remaining = 90
+		playSE("ihs")
 	elseif e.input == "generic_1" and self.chosen_replay then
 		self:verifyHighscoreData()
 	elseif e.input == "menu_decide" then

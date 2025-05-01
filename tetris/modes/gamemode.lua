@@ -58,6 +58,7 @@ function GameMode:new(secret_inputs, properties)
 	self.draw_section_times = false
 	self.draw_secondary_section_times = false
 	self.big_mode = false
+	self.half_block_mode = false
 	self.irs = true
 	self.ihs = true
 	self.square_mode = false
@@ -216,15 +217,16 @@ function GameMode:addReplayInput(inputs)
 	end
 end
 
-function GameMode:update(inputs, ruleset)
-	if self.game_over or self.completed then
-		if self.save_replay and self.game_over_frames == 0 then
-			self:saveReplay()
+function GameMode:canPieceMove(inputs)
+	return not (inputs.up and self.lock_on_hard_drop and not self.hard_drop_locked)
+end
 
-			-- ensure replays are only saved once per game, incase self.game_over_frames == 0 for longer than one frame
-			self.save_replay = false
-		end
-		self.game_over_frames = self.game_over_frames + 1
+function GameMode:update(inputs, ruleset)
+	if self.completed then
+		self:updateOnGameComplete()
+		return
+	elseif self.game_over then
+		self:updateOnGameOver()
 		return
 	end
 
@@ -285,9 +287,7 @@ function GameMode:update(inputs, ruleset)
 
 		ruleset:processPiece(
 			inputs, self.piece, self.grid, self:getGravity(), self.prev_inputs,
-			(
-				inputs.up and self.lock_on_hard_drop and not self.hard_drop_locked
-			) and "none" or self.move,
+			self:canPieceMove(inputs) and self.move or "none",
 			self:getLockDelay(), self:getDropSpeed(),
 			self.drop_locked, self.hard_drop_locked,
 			self.enable_hard_drop, self.additive_gravity, self.classic_lock
@@ -440,6 +440,28 @@ end
 
 function GameMode:onHardDrop(dropped_row_count)
 	self:onSoftDrop(dropped_row_count * 2)
+end
+
+function GameMode:updateOnGameOver()
+	if self.save_replay and self.game_over_frames == 0 then
+		self:saveReplay()
+
+		-- ensure replays are only saved once per game, incase self.game_over_frames == 0 for longer than one frame
+		self.save_replay = false
+	end
+	self.game_over_frames = self.game_over_frames + 1
+end
+
+function GameMode:updateOnGameComplete()
+	return self:updateOnGameOver()
+end
+
+function GameMode:drawOnGameOver()
+	self:onGameOver() -- legacy, to not break anythin'
+end
+
+function GameMode:drawOnGameComplete()
+	self:onGameComplete() -- legacy, to not break anythin'
 end
 
 function GameMode:onGameOver()
@@ -883,20 +905,28 @@ function GameMode:drawNextQueue(ruleset)
 	end
 	local function drawPiece(piece, skin, offsets, pos_x, pos_y)
 		for index, offset in pairs(offsets) do
-			local x = offset.x + ruleset:getDrawOffset(piece, rotation).x + ruleset.spawn_positions[piece].x
-			local y = offset.y + ruleset:getDrawOffset(piece, rotation).y + 4.7
+			local x = offset.x + ruleset:getDrawOffset(piece).x + ruleset.spawn_positions[piece].x
+			local y = offset.y + ruleset:getDrawOffset(piece).y + 4.7
 			drawSizeIndependentImage(blocks[skin][colourscheme[piece]], pos_x+x*16, pos_y+y*16, 0, 16, 16)
 		end
 	end
+	local is_obscured = false
+	if not config.side_next and config.visualsettings.offset_obscured == 2 and self.piece and self.piece.position.y < 4 then
+		is_obscured = true
+	end
 	for i = 1, self.next_queue_length do
+		local next_queue_position = i
 		self:setNextOpacity(i)
 		local next_piece = self.next_queue[i].shape
 		local skin = self.next_queue[i].skin
 		local rotation = self.next_queue[i].orientation
+		if is_obscured then
+			next_queue_position = next_queue_position + 1
+		end
 		if config.side_next then -- next at side
-			drawPiece(next_piece, skin, ruleset.block_offsets[next_piece][rotation], 192, -16+i*48)
+			drawPiece(next_piece, skin, ruleset.block_offsets[next_piece][rotation], 192, -16+next_queue_position*48)
 		else -- next at top
-			drawPiece(next_piece, skin, ruleset.block_offsets[next_piece][rotation], -16+i*80, -32)
+			drawPiece(next_piece, skin, ruleset.block_offsets[next_piece][rotation], -16+next_queue_position*80, -32)
 		end
 	end
 	if self.hold_queue ~= nil and self.enable_hold then
@@ -944,6 +974,7 @@ function GameMode:drawScoringInfo()
 		love.graphics.printf("NEXT", 64, 40, 40, "left")
 	end
 
+	love.graphics.setFont(font_3x5)
 	love.graphics.print(
 		self.das.direction .. " " ..
 		self.das.frames .. " " ..
@@ -1118,9 +1149,9 @@ function GameMode:draw(paused)
 	end
 
 	if self.completed then
-		self:onGameComplete()
+		self:drawOnGameComplete()
 	elseif self.game_over then
-		self:onGameOver()
+		self:drawOnGameOver()
 	end
 end
 
